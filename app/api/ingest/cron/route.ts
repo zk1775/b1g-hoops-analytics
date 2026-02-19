@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runIngest } from "@/lib/data/ingest";
-import { resolveAdminToken, resolveRuntimeEnv } from "@/lib/runtime/env";
+import { requireRuntimeEnv } from "@/lib/runtime/env";
 
 export const runtime = "edge";
 
@@ -21,15 +21,20 @@ function extractToken(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const env = resolveRuntimeEnv();
-  if (!env) {
+  let env: ReturnType<typeof requireRuntimeEnv>;
+  try {
+    env = requireRuntimeEnv();
+  } catch (error) {
     return NextResponse.json(
-      { status: "error", message: "Missing b1g_analytics_db binding" },
+      {
+        status: "error",
+        message: error instanceof Error ? error.message : "Missing b1g_analytics_db binding",
+      },
       { status: 500 },
     );
   }
 
-  const adminToken = resolveAdminToken(env);
+  const adminToken = env.ADMIN_TOKEN?.trim() ?? null;
   if (!adminToken || extractToken(request) !== adminToken) {
     return NextResponse.json({ status: "error", message: "Unauthorized" }, { status: 401 });
   }
