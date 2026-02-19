@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb, type DbEnv } from "@/db/client";
 
-export const runtime = "edge";
 
 function resolveEnv(): DbEnv | null {
   const g = globalThis as typeof globalThis & {
