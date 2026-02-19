@@ -12,3 +12,5 @@ export default async function GamePage({ params }: GamePageProps) {
     </section>
   );
 }
+
+export const runtime = "edge";

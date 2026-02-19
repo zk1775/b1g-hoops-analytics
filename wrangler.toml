@@ -1,0 +1,7 @@
+name = "b1g-hoops-analytics"
+compatibility_date = "2025-02-01"
+
+[[d1_databases]]
+binding = "b1g_analytics_db"
+database_name = "b1g-analytics-db"
+database_id = "c20d4443-9538-4cf3-9d0d-b3894cb543d1"

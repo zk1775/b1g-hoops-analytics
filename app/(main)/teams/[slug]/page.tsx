@@ -12,3 +12,5 @@ export default async function TeamPage({ params }: TeamPageProps) {
     </section>
   );
 }
+
+export const runtime = "edge";
