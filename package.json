@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:b1g": "tsx scripts/seed-b1g.ts",
+    "ingest:season": "tsx scripts/ingest-season.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.1",
@@ -23,6 +25,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5",
     "wrangler": "^4.67.0"
   }

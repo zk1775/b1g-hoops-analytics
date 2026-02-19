@@ -1,24 +1,12 @@
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getDb, type DbEnv } from "@/db/client";
+import { getDb } from "@/db/client";
+import { resolveDbEnv } from "@/lib/runtime/env";
 
-
-function resolveEnv(): DbEnv | null {
-  const g = globalThis as typeof globalThis & {
-    cloudflare?: { env?: Partial<DbEnv> };
-    env?: Partial<DbEnv>;
-  };
-
-  const env = g.cloudflare?.env ?? g.env;
-  if (!env?.b1g_analytics_db) {
-    return null;
-  }
-
-  return env as DbEnv;
-}
+export const runtime = "edge";
 
 export async function GET() {
-  const env = resolveEnv();
+  const env = resolveDbEnv();
 
   if (!env) {
     return NextResponse.json(
@@ -32,5 +20,3 @@ export async function GET() {
 
   return NextResponse.json({ status: "ok" });
 }
-
-export const runtime = "edge";
