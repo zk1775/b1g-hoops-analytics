@@ -102,9 +102,7 @@ async function countPlayerTeamCoverage(gameId: number) {
   return Number(rows[0]?.count ?? 0);
 }
 
-async function countRemaining(
-  params: { season: number; teamSlug?: string; scanLimit: number },
-) {
+async function countRemaining(params: { season: number; teamSlug?: string; scanLimit: number }) {
   const finalGames = await getCandidateGames(params);
   let remaining = 0;
   for (const game of finalGames) {
@@ -140,6 +138,7 @@ export async function POST(request: NextRequest) {
   const limit = Math.min(Math.max(parseIntParam(url.searchParams.get("limit"), 10), 1), 25);
   const scanLimit = Math.min(Math.max(parseIntParam(url.searchParams.get("scanLimit"), 600), 50), 2000);
   const teamSlug = url.searchParams.get("team")?.trim().toLowerCase() || undefined;
+  const includeRemaining = url.searchParams.get("includeRemaining") === "1";
 
   try {
     const db = getDb(env);
@@ -206,7 +205,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const remainingSummary = await countRemaining({ season, teamSlug, scanLimit });
+    const remainingSummary = includeRemaining
+      ? await countRemaining({ season, teamSlug, scanLimit })
+      : null;
 
     return NextResponse.json({
       status: "ok",
@@ -217,8 +218,8 @@ export async function POST(request: NextRequest) {
       selectedCandidates: candidates.length,
       teamStatsUpserted,
       playerStatsUpserted,
-      remainingGamesWithoutFullPlayerCoverage: remainingSummary.remaining,
-      finalGamesConsidered: remainingSummary.finalGamesConsidered,
+      remainingGamesWithoutFullPlayerCoverage: remainingSummary?.remaining ?? null,
+      finalGamesConsidered: remainingSummary?.finalGamesConsidered ?? null,
       errors,
     });
   } catch (error) {
