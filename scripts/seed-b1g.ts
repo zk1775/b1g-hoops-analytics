@@ -8,8 +8,12 @@ function quoteSql(value: string | null) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function buildUpsertSql() {
-  const statements: string[] = ["BEGIN TRANSACTION;"];
+function buildUpsertSql(options?: { transactional?: boolean }) {
+  const transactional = options?.transactional ?? true;
+  const statements: string[] = [];
+  if (transactional) {
+    statements.push("BEGIN TRANSACTION;");
+  }
 
   for (const team of B1G_TEAMS) {
     statements.push(
@@ -33,7 +37,9 @@ WHERE NOT EXISTS (
     );
   }
 
-  statements.push("COMMIT;");
+  if (transactional) {
+    statements.push("COMMIT;");
+  }
   return statements.join("\n");
 }
 
@@ -43,10 +49,13 @@ function shouldExecute() {
 }
 
 function main() {
-  const sql = buildUpsertSql();
+  const execute = shouldExecute();
+  const remoteFlag = process.env.SEED_REMOTE ?? process.env.D1_REMOTE;
+  const remote = remoteFlag?.toLowerCase() === "1" || remoteFlag?.toLowerCase() === "true";
+  const sql = buildUpsertSql({ transactional: !remote });
   console.log(sql);
 
-  if (!shouldExecute()) {
+  if (!execute) {
     console.error(
       "\nSQL printed only. Set SEED_EXECUTE=true to execute via Wrangler D1 CLI (--local by default).",
     );
@@ -60,9 +69,6 @@ function main() {
   }
 
   const databaseName = process.env.D1_DATABASE_NAME ?? "b1g-analytics-db";
-  const remoteFlag = process.env.SEED_REMOTE ?? process.env.D1_REMOTE;
-  const remote = remoteFlag?.toLowerCase() === "1" || remoteFlag?.toLowerCase() === "true";
-
   const args = [
     "--no-install",
     "wrangler",
