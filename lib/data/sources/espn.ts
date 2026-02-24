@@ -403,15 +403,15 @@ export async function fetchBigTenEspnTeams(): Promise<EspnConferenceTeam[]> {
 
     const slug = normalizeTeamToSlug(team);
     const known = getB1GTeamBySlug(slug);
-    const name = team?.displayName ?? known?.name ?? slug;
-    const shortName =
-      team?.shortDisplayName ?? team?.abbreviation ?? known?.shortName ?? name;
+    if (!known) {
+      continue;
+    }
 
     result.push({
       espnTeamId,
-      slug,
-      name,
-      shortName,
+      slug: known.slug,
+      name: known.name,
+      shortName: known.shortName,
       logoUrl: team?.logo ?? team?.logos?.[0]?.href ?? null,
     });
   }

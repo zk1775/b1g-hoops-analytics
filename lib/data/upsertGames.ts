@@ -42,7 +42,7 @@ async function ensureTeam(db: Db, team: NormalizedTeamRef) {
   const known = getB1GTeamBySlug(slug);
   const values = {
     slug,
-    name: team.name,
+    name: known?.name ?? team.name,
     shortName: known?.shortName ?? team.shortName ?? team.name,
     conference: known ? "Big Ten" : null,
     logoUrl: team.logoUrl,

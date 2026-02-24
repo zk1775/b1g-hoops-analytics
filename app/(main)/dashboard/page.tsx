@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { teams } from "@/db/schema";
 import IngestButton from "@/app/(main)/components/IngestButton";
@@ -25,6 +25,7 @@ export default async function DashboardPage() {
       name: teams.name,
     })
     .from(teams)
+    .where(eq(teams.conference, "Big Ten"))
     .orderBy(asc(teams.name));
 
   return (
