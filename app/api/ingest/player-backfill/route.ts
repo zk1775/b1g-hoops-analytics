@@ -145,31 +145,32 @@ export async function POST(request: NextRequest) {
     const teamRows = await db.select({ id: teams.id, slug: teams.slug }).from(teams);
     const teamIdBySlug = new Map(teamRows.map((row) => [row.slug, row.id] as const));
 
-    const finalGames = await getCandidateGames({ season, teamSlug, scanLimit });
-    const candidates: CandidateGame[] = [];
-
-    for (const game of finalGames) {
-      const coverageRows = await db
-        .select({
-          count: sql<number>`count(distinct ${playerGameStats.teamId})`,
-        })
-        .from(playerGameStats)
-        .where(eq(playerGameStats.gameId, game.id));
-      const coverage = Number(coverageRows[0]?.count ?? 0);
-      if (coverage < 2) {
-        candidates.push({
-          id: game.id,
-          externalId: game.externalId,
-          status: game.status,
-          date: game.date,
-          homeSlug: game.homeSlug,
-          awaySlug: game.awaySlug,
-        });
-      }
-      if (candidates.length >= limit) {
-        break;
-      }
-    }
+    const baseSql = `
+      select
+        g.id as id,
+        g.external_id as externalId,
+        g.status as status,
+        g.date as date,
+        ht.slug as homeSlug,
+        at.slug as awaySlug
+      from games g
+      join teams ht on ht.id = g.home_team_id
+      join teams at on at.id = g.away_team_id
+      left join player_game_stats pgs on pgs.game_id = g.id
+      where g.season = ?
+        and (ht.conference = 'Big Ten' or at.conference = 'Big Ten')
+        and lower(coalesce(g.status, '')) like 'final%'
+        ${teamSlug ? "and (ht.slug = ? or at.slug = ?)" : ""}
+      group by g.id, g.external_id, g.status, g.date, ht.slug, at.slug
+      having count(distinct pgs.team_id) < 2
+      order by g.date desc, g.id desc
+      limit ?
+    `;
+    const candidateStmt = env.b1g_analytics_db.prepare(baseSql);
+    const candidateResult = teamSlug
+      ? await candidateStmt.bind(season, teamSlug, teamSlug, limit).all<CandidateGame>()
+      : await candidateStmt.bind(season, limit).all<CandidateGame>();
+    const candidates = candidateResult.results ?? [];
 
     let processed = 0;
     let teamStatsUpserted = 0;
