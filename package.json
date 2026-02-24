@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "build:pages": "next-on-pages",
     "start": "next start",
     "lint": "eslint",
     "seed:b1g": "tsx scripts/seed-b1g.ts",
