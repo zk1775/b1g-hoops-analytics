@@ -47,7 +47,7 @@ export default async function TeamPage({ params }: TeamPageProps) {
     return (
       <section className="space-y-3">
         <h1 className="text-2xl font-semibold">Team: {slug}</h1>
-        <p className="text-sm text-red-700">Missing D1 binding: b1g_analytics_db</p>
+        <p className="text-sm text-danger">Missing D1 binding: b1g_analytics_db</p>
       </section>
     );
   }
@@ -61,8 +61,8 @@ export default async function TeamPage({ params }: TeamPageProps) {
     return (
       <section className="space-y-3">
         <h1 className="text-2xl font-semibold">Team Not Found</h1>
-        <p className="text-sm text-black/70">
-          No team exists for slug <code>{slug}</code>.
+        <p className="text-sm text-muted">
+          No team exists for slug <code className="rounded bg-panel px-1 py-0.5">{slug}</code>.
         </p>
       </section>
     );
@@ -130,6 +130,9 @@ export default async function TeamPage({ params }: TeamPageProps) {
   let finalGamesCount = 0;
   let totalPointsFor = 0;
   let totalPointsAgainst = 0;
+  let wins = 0;
+  let losses = 0;
+
   for (const game of schedule) {
     const resolvedScores = resolveGameScores(game);
     if (
@@ -139,10 +142,19 @@ export default async function TeamPage({ params }: TeamPageProps) {
     ) {
       continue;
     }
+
     const isHome = game.homeTeamId === team.id;
-    totalPointsFor += isHome ? resolvedScores.homeScore : resolvedScores.awayScore;
-    totalPointsAgainst += isHome ? resolvedScores.awayScore : resolvedScores.homeScore;
+    const pointsFor = isHome ? resolvedScores.homeScore : resolvedScores.awayScore;
+    const pointsAgainst = isHome ? resolvedScores.awayScore : resolvedScores.homeScore;
+    totalPointsFor += pointsFor;
+    totalPointsAgainst += pointsAgainst;
     finalGamesCount += 1;
+
+    if (pointsFor > pointsAgainst) {
+      wins += 1;
+    } else if (pointsFor < pointsAgainst) {
+      losses += 1;
+    }
   }
 
   const avgPointsFor = finalGamesCount > 0 ? totalPointsFor / finalGamesCount : null;
@@ -156,87 +168,156 @@ export default async function TeamPage({ params }: TeamPageProps) {
     .where(eq(teamGameStats.teamId, team.id));
   const avgPossessions = possessionsSummary[0]?.avgPossessions ?? null;
 
+  const futureGames = schedule.filter((game) => !isFinalStatus(game.status)).length;
+
   return (
-    <section className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">{team.name}</h1>
-        <p className="text-sm text-black/70">{team.conference ?? "Independent"}</p>
+    <section className="space-y-5">
+      <div className="data-panel data-grid-bg rounded-2xl p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
+              <span className="inline-block h-2 w-2 rounded-full bg-accent" />
+              Team Profile
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              {team.name}
+            </h1>
+            <p className="mt-1.5 text-sm text-muted">{team.conference ?? "Independent"}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div className="data-panel rounded-xl p-2.5">
+              <p className="stat-label">Record</p>
+              <p className="stat-value mt-1 text-base text-white">
+                {wins}-{losses}
+              </p>
+            </div>
+            <div className="data-panel rounded-xl p-2.5">
+              <p className="stat-label">Final Games</p>
+              <p className="stat-value mt-1 text-base text-white">{finalGamesCount}</p>
+            </div>
+            <div className="data-panel rounded-xl p-2.5">
+              <p className="stat-label">Remaining</p>
+              <p className="stat-value mt-1 text-base text-white">{futureGames}</p>
+            </div>
+            <div className="data-panel rounded-xl p-2.5">
+              <p className="stat-label">Slug</p>
+              <p className="stat-value mt-1 text-xs text-white">{team.slug}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-2 rounded border border-black/10 p-3 text-sm sm:grid-cols-3">
-        <p>
-          Avg Points For:{" "}
-          <span className="font-medium">
+      <div className="grid gap-2.5 lg:grid-cols-3">
+        <div className="data-panel rounded-xl p-3">
+          <p className="stat-label">Avg Points For</p>
+          <p className="stat-value mt-1.5 text-xl text-white">
             {avgPointsFor !== null ? avgPointsFor.toFixed(1) : "N/A"}
-          </span>
-        </p>
-        <p>
-          Avg Points Against:{" "}
-          <span className="font-medium">
+          </p>
+        </div>
+        <div className="data-panel rounded-xl p-3">
+          <p className="stat-label">Avg Points Against</p>
+          <p className="stat-value mt-1.5 text-xl text-white">
             {avgPointsAgainst !== null ? avgPointsAgainst.toFixed(1) : "N/A"}
-          </span>
-        </p>
-        <p>
-          Avg Possessions Est:{" "}
-          <span className="font-medium">
+          </p>
+        </div>
+        <div className="data-panel rounded-xl p-3">
+          <p className="stat-label">Avg Possessions Est</p>
+          <p className="stat-value mt-1.5 text-xl text-white">
             {avgPossessions !== null ? Number(avgPossessions).toFixed(1) : "N/A"}
-          </span>
-        </p>
+          </p>
+        </div>
       </div>
 
       {schedule.length === 0 ? (
-        <div className="rounded border border-black/10 p-4 text-sm text-black/70">
-          No games found yet. Run ingest via <code>/api/ingest</code>.
+        <div className="data-panel rounded-xl p-4 text-sm text-muted">
+          No games found yet. Run ingest via{" "}
+          <code className="rounded bg-panel px-1 py-0.5 text-foreground/90">/api/ingest</code>.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded border border-black/10">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-black/10 bg-black/5">
-              <tr>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Opponent</th>
-                <th className="px-3 py-2">Result</th>
-                <th className="px-3 py-2">Venue</th>
-                <th className="px-3 py-2">Game</th>
-              </tr>
-            </thead>
-            <tbody>
-              {schedule.map((game) => {
-                const isHome = game.homeTeamId === team.id;
-                const opponentName = isHome ? game.awayName : game.homeName;
-                const opponentSlug = isHome ? game.awaySlug : game.homeSlug;
-                const resolvedScores = resolveGameScores(game);
-                return (
-                  <tr key={game.id} className="border-b border-black/10 last:border-0">
-                    <td className="px-3 py-2">{formatDate(game.date)}</td>
-                    <td className="px-3 py-2">
-                      <Link
-                        href={`/teams/${opponentSlug}`}
-                        prefetch={false}
-                        className="hover:underline"
-                      >
-                        {opponentName}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2">
-                      {formatResult(
-                        game.status,
-                        isHome,
-                        resolvedScores.homeScore,
-                        resolvedScores.awayScore,
-                      )}
-                    </td>
-                    <td className="px-3 py-2">{game.venue ?? "-"}</td>
-                    <td className="px-3 py-2">
-                      <Link href={`/games/${game.id}`} prefetch={false} className="hover:underline">
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="data-panel overflow-hidden rounded-2xl">
+          <div className="flex items-center justify-between border-b border-line px-3 py-2.5 sm:px-4">
+            <div>
+              <p className="stat-label">Schedule & Results</p>
+              <p className="text-sm text-foreground/90">All games for this team (B1G + OOC)</p>
+            </div>
+            <span className="stat-value text-xs text-muted">{schedule.length} games</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="dense-table min-w-full text-left">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Site</th>
+                  <th>Opponent</th>
+                  <th>Result</th>
+                  <th>Venue</th>
+                  <th>Game</th>
+                </tr>
+              </thead>
+              <tbody>
+                {schedule.map((game) => {
+                  const isHome = game.homeTeamId === team.id;
+                  const opponentName = isHome ? game.awayName : game.homeName;
+                  const opponentSlug = isHome ? game.awaySlug : game.homeSlug;
+                  const resolvedScores = resolveGameScores(game);
+                  const resultText = formatResult(
+                    game.status,
+                    isHome,
+                    resolvedScores.homeScore,
+                    resolvedScores.awayScore,
+                  );
+                  const isWin = resultText.startsWith("W ");
+                  const isLoss = resultText.startsWith("L ");
+
+                  return (
+                    <tr key={game.id}>
+                      <td className="table-number">{formatDate(game.date)}</td>
+                      <td>
+                        <span className="rounded border border-line bg-panel px-1.5 py-0.5 text-xs text-muted">
+                          {isHome ? "H" : "A"}
+                        </span>
+                      </td>
+                      <td>
+                        <Link
+                          href={`/teams/${opponentSlug}`}
+                          prefetch={false}
+                          className="font-medium text-foreground hover:text-accent"
+                        >
+                          {opponentName}
+                        </Link>
+                      </td>
+                      <td>
+                        <span
+                          className={[
+                            "table-number font-medium",
+                            isWin
+                              ? "text-accent-2"
+                              : isLoss
+                                ? "text-danger"
+                                : "text-foreground/90",
+                          ].join(" ")}
+                        >
+                          {resultText}
+                        </span>
+                      </td>
+                      <td className="text-muted">{game.venue ?? "-"}</td>
+                      <td>
+                        <Link
+                          href={`/games/${game.id}`}
+                          prefetch={false}
+                          className="rounded-md border border-line bg-panel px-2 py-0.5 text-[11px] text-foreground/90 hover:border-accent/40 hover:text-accent"
+                        >
+                          View
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>

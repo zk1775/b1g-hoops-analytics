@@ -1,26 +1,161 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #08111f;
+  --foreground: #e8eef8;
+  --muted: #9cb0c9;
+  --panel: #0d182a;
+  --panel-2: #12213a;
+  --line: rgba(171, 197, 232, 0.14);
+  --accent: #63d2ff;
+  --accent-2: #8bffb7;
+  --danger: #ff6f7d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    "IBM Plex Sans",
+    "Avenir Next",
+    "Segoe UI",
+    "Helvetica Neue",
+    sans-serif;
+  background-image:
+    radial-gradient(circle at 15% 15%, rgba(99, 210, 255, 0.13), transparent 35%),
+    radial-gradient(circle at 85% 12%, rgba(139, 255, 183, 0.08), transparent 38%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0));
+}
+
+a {
+  transition: color 140ms ease, opacity 140ms ease, background-color 140ms ease;
+}
+
+code,
+pre,
+kbd {
+  font-family:
+    "IBM Plex Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    monospace;
+}
+
+::selection {
+  background: rgba(99, 210, 255, 0.24);
+  color: #f5fbff;
+}
+
+.data-panel {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(18, 33, 58, 0.8), rgba(13, 24, 42, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 16px 42px rgba(0, 0, 0, 0.25);
+}
+
+.data-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(171, 197, 232, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(171, 197, 232, 0.03) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stat-value {
+  font-family:
+    "IBM Plex Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    monospace;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.dense-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.82rem;
+  line-height: 1.15rem;
+}
+
+.dense-table thead th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(171, 197, 232, 0.12);
+  background: rgba(13, 24, 42, 0.72);
+  padding: 0.55rem 0.7rem;
+}
+
+.dense-table tbody td {
+  padding: 0.58rem 0.7rem;
+  border-bottom: 1px solid rgba(171, 197, 232, 0.08);
+  vertical-align: middle;
+}
+
+.dense-table tbody tr:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.dense-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dense-table tbody tr:hover {
+  background: rgba(99, 210, 255, 0.04);
+}
+
+.dense-table .num {
+  font-family:
+    "IBM Plex Mono",
+    "SFMono-Regular",
+    ui-monospace,
+    Menlo,
+    monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 1024px) {
+  .dense-table {
+    font-size: 0.79rem;
+  }
+
+  .dense-table thead th {
+    padding: 0.5rem 0.65rem;
+  }
+
+  .dense-table tbody td {
+    padding: 0.5rem 0.65rem;
+  }
 }

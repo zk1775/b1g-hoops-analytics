@@ -48,23 +48,40 @@ export default function IngestButton() {
   }
 
   return (
-    <div className="space-y-2">
-      <input
-        type="password"
-        value={token}
-        onChange={(event) => setToken(event.target.value)}
-        placeholder="ADMIN_TOKEN (optional)"
-        className="w-full rounded border border-black/20 px-3 py-2 text-sm"
-      />
-      <button
-        type="button"
-        onClick={runIngest}
-        disabled={loading}
-        className="rounded border border-black/20 px-3 py-2 text-sm font-medium hover:bg-black/5 disabled:opacity-60"
-      >
-        {loading ? "Ingesting..." : "Run Ingest"}
-      </button>
-      {status ? <p className="text-sm text-black/70">{status}</p> : null}
+    <div className="data-panel rounded-xl p-3">
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <div>
+          <p className="stat-label">Admin Ingest</p>
+          <p className="text-xs text-foreground/90">Pull latest schedule/results from ESPN</p>
+        </div>
+        <span className="rounded-full border border-line bg-panel-2 px-2 py-1 text-xs text-muted">
+          D1 Upsert
+        </span>
+      </div>
+
+      <div className="grid gap-2.5 md:grid-cols-[1fr_auto]">
+        <input
+          type="password"
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+          placeholder="ADMIN_TOKEN (optional if set in env)"
+          className="rounded-lg border border-line bg-panel px-3 py-2 text-xs text-foreground outline-none ring-0 placeholder:text-muted focus:border-accent/50"
+        />
+        <button
+          type="button"
+          onClick={runIngest}
+          disabled={loading}
+          className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-semibold tracking-wide text-accent hover:bg-accent/15 disabled:opacity-60"
+        >
+          {loading ? "Ingesting..." : "Run Ingest"}
+        </button>
+      </div>
+
+      {status ? (
+        <p className="mt-2.5 rounded-lg border border-line bg-panel/60 px-3 py-2 text-xs text-muted">
+          {status}
+        </p>
+      ) : null}
     </div>
   );
 }

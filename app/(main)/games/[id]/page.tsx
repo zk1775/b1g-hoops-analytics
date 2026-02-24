@@ -26,7 +26,7 @@ export default async function GamePage({ params }: GamePageProps) {
     return (
       <section className="space-y-2">
         <h1 className="text-2xl font-semibold">Invalid Game ID</h1>
-        <p className="text-sm text-black/70">Game IDs must be positive integers.</p>
+        <p className="text-sm text-muted">Game IDs must be positive integers.</p>
       </section>
     );
   }
@@ -36,7 +36,7 @@ export default async function GamePage({ params }: GamePageProps) {
     return (
       <section className="space-y-2">
         <h1 className="text-2xl font-semibold">Game: {id}</h1>
-        <p className="text-sm text-red-700">Missing D1 binding: b1g_analytics_db</p>
+        <p className="text-sm text-danger">Missing D1 binding: b1g_analytics_db</p>
       </section>
     );
   }
@@ -51,11 +51,15 @@ export default async function GamePage({ params }: GamePageProps) {
       externalId: games.externalId,
       date: games.date,
       status: games.status,
+      homeTeamId: games.homeTeamId,
+      awayTeamId: games.awayTeamId,
       homeScore: games.homeScore,
       awayScore: games.awayScore,
       venue: games.venue,
       homeName: homeTeam.name,
+      homeSlug: homeTeam.slug,
       awayName: awayTeam.name,
+      awaySlug: awayTeam.slug,
     })
     .from(games)
     .innerJoin(homeTeam, eq(games.homeTeamId, homeTeam.id))
@@ -68,7 +72,7 @@ export default async function GamePage({ params }: GamePageProps) {
     return (
       <section className="space-y-2">
         <h1 className="text-2xl font-semibold">Game Not Found</h1>
-        <p className="text-sm text-black/70">No game exists with id {id}.</p>
+        <p className="text-sm text-muted">No game exists with id {id}.</p>
       </section>
     );
   }
@@ -76,6 +80,7 @@ export default async function GamePage({ params }: GamePageProps) {
   const stats = await db
     .select({
       id: teamGameStats.id,
+      teamId: teamGameStats.teamId,
       isHome: teamGameStats.isHome,
       teamName: teams.name,
       points: teamGameStats.points,
@@ -106,89 +111,129 @@ export default async function GamePage({ params }: GamePageProps) {
   const resolvedAwayScore = game.awayScore ?? awayStatsRow?.points ?? null;
 
   return (
-    <section className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">
-          {game.awayName} at {game.homeName}
-        </h1>
-        <p className="text-sm text-black/70">
-          {formatDate(game.date)} • {game.status ?? "Scheduled"}
-          {game.venue ? ` • ${game.venue}` : ""}
-        </p>
-        <p className="text-lg font-medium">
-          {game.awayName} {resolvedAwayScore ?? "-"} - {game.homeName} {resolvedHomeScore ?? "-"}
-        </p>
+    <section className="space-y-5">
+      <div className="data-panel data-grid-bg rounded-2xl p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
+              <span className="inline-block h-2 w-2 rounded-full bg-accent" />
+              Game Detail
+            </div>
+            <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+              <Link href={`/teams/${game.awaySlug}`} prefetch={false} className="hover:text-accent">
+                {game.awayName}
+              </Link>{" "}
+              at{" "}
+              <Link href={`/teams/${game.homeSlug}`} prefetch={false} className="hover:text-accent">
+                {game.homeName}
+              </Link>
+            </h1>
+            <p className="text-sm leading-5 text-muted">
+              {formatDate(game.date)} • {game.status ?? "Scheduled"}
+              {game.venue ? ` • ${game.venue}` : ""}
+            </p>
+            <p className="stat-value text-xl text-white sm:text-2xl">
+              {game.awayName} {resolvedAwayScore ?? "-"} - {game.homeName} {resolvedHomeScore ?? "-"}
+            </p>
+          </div>
+
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <div className="data-panel rounded-xl p-2.5">
+              <p className="stat-label">Local Game ID</p>
+              <p className="stat-value mt-1 text-xs text-white">{game.id}</p>
+            </div>
+            <div className="data-panel rounded-xl p-2.5">
+              <p className="stat-label">ESPN Event ID</p>
+              <p className="stat-value mt-1 text-xs text-white">{game.externalId}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {stats.length === 0 ? (
-        <div className="rounded border border-black/10 p-3 text-sm text-black/70">
+        <div className="data-panel rounded-xl p-4 text-sm text-muted">
           <p>No stats ingested yet for this game.</p>
-          <p className="mt-1">
-            Run ingest with boxscores enabled:{" "}
-            <Link
-              href={`/api/ingest?mode=all&includeBoxscore=true&token=YOUR_ADMIN_TOKEN`}
-              prefetch={false}
-              className="font-medium hover:underline"
-            >
-              /api/ingest?mode=all&includeBoxscore=true&token=YOUR_ADMIN_TOKEN
-            </Link>
+          <p className="mt-2">
+            Run ingest with boxscores enabled via{" "}
+            <code className="rounded bg-panel px-1 py-0.5 text-foreground/90">
+              /api/ingest
+            </code>{" "}
+            with <code className="rounded bg-panel px-1 py-0.5 text-foreground/90">includeBoxscore=true</code>.
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded border border-black/10">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-black/10 bg-black/5">
-              <tr>
-                <th className="px-3 py-2">Team</th>
-                <th className="px-3 py-2">PTS</th>
-                <th className="px-3 py-2">FG</th>
-                <th className="px-3 py-2">3PT</th>
-                <th className="px-3 py-2">FT</th>
-                <th className="px-3 py-2">OREB</th>
-                <th className="px-3 py-2">DREB</th>
-                <th className="px-3 py-2">REB</th>
-                <th className="px-3 py-2">AST</th>
-                <th className="px-3 py-2">TOV</th>
-                <th className="px-3 py-2">STL</th>
-                <th className="px-3 py-2">BLK</th>
-                <th className="px-3 py-2">PF</th>
-                <th className="px-3 py-2">Poss</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.map((row) => (
-                <tr key={row.id} className="border-b border-black/10 last:border-0">
-                  <td className="px-3 py-2">
-                    {row.teamName}
-                    {row.isHome ? " (Home)" : " (Away)"}
-                  </td>
-                  <td className="px-3 py-2">{row.points ?? "-"}</td>
-                  <td className="px-3 py-2">
-                    {row.fgm ?? "-"}-{row.fga ?? "-"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.fg3m ?? "-"}-{row.fg3a ?? "-"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.ftm ?? "-"}-{row.fta ?? "-"}
-                  </td>
-                  <td className="px-3 py-2">{row.oreb ?? "-"}</td>
-                  <td className="px-3 py-2">{row.dreb ?? "-"}</td>
-                  <td className="px-3 py-2">{row.reb ?? "-"}</td>
-                  <td className="px-3 py-2">{row.ast ?? "-"}</td>
-                  <td className="px-3 py-2">{row.tov ?? "-"}</td>
-                  <td className="px-3 py-2">{row.stl ?? "-"}</td>
-                  <td className="px-3 py-2">{row.blk ?? "-"}</td>
-                  <td className="px-3 py-2">{row.pf ?? "-"}</td>
-                  <td className="px-3 py-2">
-                    {row.possessionsEst !== null && row.possessionsEst !== undefined
-                      ? Number(row.possessionsEst).toFixed(1)
-                      : "-"}
-                  </td>
+        <div className="data-panel overflow-hidden rounded-2xl">
+          <div className="flex items-center justify-between border-b border-line px-3 py-2.5 sm:px-4">
+            <div>
+              <p className="stat-label">Team Boxscore Stats</p>
+              <p className="text-sm text-foreground/90">
+                Parsed from ESPN summary / boxscore endpoints
+              </p>
+            </div>
+            <span className="stat-value text-xs text-muted">{stats.length} rows</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="dense-table min-w-full text-left">
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th>PTS</th>
+                  <th>FG</th>
+                  <th>3PT</th>
+                  <th>FT</th>
+                  <th>OREB</th>
+                  <th>DREB</th>
+                  <th>REB</th>
+                  <th>AST</th>
+                  <th>TOV</th>
+                  <th>STL</th>
+                  <th>BLK</th>
+                  <th>PF</th>
+                  <th>Poss</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {stats.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded border border-line bg-panel px-1.5 py-0.5 text-xs text-muted">
+                          {row.isHome ? "H" : "A"}
+                        </span>
+                        <span className="font-medium text-foreground">{row.teamName}</span>
+                      </div>
+                    </td>
+                    <td className="table-number font-medium text-white">
+                      {row.points ?? "-"}
+                    </td>
+                    <td className="table-number">
+                      {row.fgm ?? "-"}-{row.fga ?? "-"}
+                    </td>
+                    <td className="table-number">
+                      {row.fg3m ?? "-"}-{row.fg3a ?? "-"}
+                    </td>
+                    <td className="table-number">
+                      {row.ftm ?? "-"}-{row.fta ?? "-"}
+                    </td>
+                    <td className="table-number">{row.oreb ?? "-"}</td>
+                    <td className="table-number">{row.dreb ?? "-"}</td>
+                    <td className="table-number">{row.reb ?? "-"}</td>
+                    <td className="table-number">{row.ast ?? "-"}</td>
+                    <td className="table-number">{row.tov ?? "-"}</td>
+                    <td className="table-number">{row.stl ?? "-"}</td>
+                    <td className="table-number">{row.blk ?? "-"}</td>
+                    <td className="table-number">{row.pf ?? "-"}</td>
+                    <td className="table-number">
+                      {row.possessionsEst !== null && row.possessionsEst !== undefined
+                        ? Number(row.possessionsEst).toFixed(1)
+                        : "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>

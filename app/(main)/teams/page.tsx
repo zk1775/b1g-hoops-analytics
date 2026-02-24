@@ -27,7 +27,7 @@ export default async function TeamsPage() {
     return (
       <section className="space-y-4">
         <h1 className="text-2xl font-semibold">Teams</h1>
-        <p className="text-sm text-red-700">Missing D1 binding: b1g_analytics_db</p>
+        <p className="text-sm text-danger">Missing D1 binding: b1g_analytics_db</p>
       </section>
     );
   }
@@ -38,6 +38,7 @@ export default async function TeamsPage() {
       id: teams.id,
       slug: teams.slug,
       name: teams.name,
+      shortName: teams.shortName,
     })
     .from(teams)
     .where(eq(teams.conference, "Big Ten"))
@@ -47,8 +48,9 @@ export default async function TeamsPage() {
     return (
       <section className="space-y-4">
         <h1 className="text-2xl font-semibold">Teams</h1>
-        <p className="text-sm text-black/70">
-          No Big Ten teams found. Run <code>npm run seed:b1g</code>.
+        <p className="text-sm text-muted">
+          No Big Ten teams found. Run{" "}
+          <code className="rounded bg-panel px-1 py-0.5 text-foreground/90">npm run seed:b1g</code>.
         </p>
       </section>
     );
@@ -126,61 +128,113 @@ export default async function TeamsPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold">Teams</h1>
-      <ul className="space-y-2">
-        {b1gTeams.map((team) => {
-          const summary = summaries.get(team.id)!;
-          return (
-            <li key={team.id} className="rounded border border-black/10 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <Link
-                    href={`/teams/${team.slug}`}
-                    prefetch={false}
-                    className="font-medium hover:underline"
-                  >
-                    {team.name}
-                  </Link>
-                  <p className="text-sm text-black/70">
-                    Record: {summary.wins}-{summary.losses}
-                  </p>
-                </div>
-                <div className="text-sm text-black/70">
-                  <p>
-                    Last:{" "}
-                    {summary.lastGame ? (
+    <section className="space-y-5">
+      <div className="data-panel data-grid-bg rounded-2xl p-4 sm:p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="stat-label">Team Table</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              Big Ten Teams
+            </h1>
+            <p className="mt-1.5 text-sm leading-5 text-muted">
+              Compact team index with record and quick links to last/next games.
+            </p>
+          </div>
+          <span className="rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
+            {b1gTeams.length} teams
+          </span>
+        </div>
+      </div>
+
+      <div className="data-panel overflow-hidden rounded-2xl">
+        <div className="overflow-x-auto">
+          <table className="dense-table min-w-full text-left">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th>Rec</th>
+                <th>Last Game</th>
+                <th>Next Game</th>
+                <th>Profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              {b1gTeams.map((team) => {
+                const summary = summaries.get(team.id)!;
+                return (
+                  <tr key={team.id}>
+                    <td>
+                      <div className="flex items-center gap-2.5">
+                        <span className="grid h-7 w-7 place-items-center rounded-md border border-line bg-panel-2">
+                          <span className="stat-value text-[10px] text-accent">
+                            {team.shortName}
+                          </span>
+                        </span>
+                        <div>
+                          <Link
+                            href={`/teams/${team.slug}`}
+                            prefetch={false}
+                            className="font-medium text-foreground hover:text-accent"
+                          >
+                            {team.name}
+                          </Link>
+                          <p className="text-[11px] text-muted">{team.slug}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="stat-value text-xs text-white">
+                        {summary.wins}-{summary.losses}
+                      </span>
+                    </td>
+                    <td className="text-muted">
+                      {summary.lastGame ? (
+                        <Link
+                          href={`/games/${summary.lastGame.id}`}
+                          prefetch={false}
+                          className="hover:text-accent"
+                        >
+                          <span className="text-foreground/90">{summary.lastGame.opponent}</span>
+                          <span className="ml-2 text-[11px] text-muted">
+                            ({formatDate(summary.lastGame.date)})
+                          </span>
+                        </Link>
+                      ) : (
+                        "N/A"
+                      )}
+                    </td>
+                    <td className="text-muted">
+                      {summary.nextGame ? (
+                        <Link
+                          href={`/games/${summary.nextGame.id}`}
+                          prefetch={false}
+                          className="hover:text-accent"
+                        >
+                          <span className="text-foreground/90">{summary.nextGame.opponent}</span>
+                          <span className="ml-2 text-[11px] text-muted">
+                            ({formatDate(summary.nextGame.date)})
+                          </span>
+                        </Link>
+                      ) : (
+                        "N/A"
+                      )}
+                    </td>
+                    <td>
                       <Link
-                        href={`/games/${summary.lastGame.id}`}
+                        href={`/teams/${team.slug}`}
                         prefetch={false}
-                        className="hover:underline"
+                        className="rounded-md border border-line bg-panel px-2 py-0.5 text-[11px] text-foreground/90 hover:border-accent/40 hover:text-accent"
                       >
-                        {summary.lastGame.opponent} ({formatDate(summary.lastGame.date)})
+                        Open
                       </Link>
-                    ) : (
-                      "N/A"
-                    )}
-                  </p>
-                  <p>
-                    Next:{" "}
-                    {summary.nextGame ? (
-                      <Link
-                        href={`/games/${summary.nextGame.id}`}
-                        prefetch={false}
-                        className="hover:underline"
-                      >
-                        {summary.nextGame.opponent} ({formatDate(summary.nextGame.date)})
-                      </Link>
-                    ) : (
-                      "N/A"
-                    )}
-                  </p>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }
