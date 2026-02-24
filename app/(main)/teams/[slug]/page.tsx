@@ -244,8 +244,8 @@ export default async function TeamPage({ params }: TeamPageProps) {
             <span className="stat-value text-xs text-muted">{schedule.length} games</span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="dense-table min-w-full text-left">
+          <div className="table-scroll overflow-x-auto">
+            <table className="dense-table table-sticky min-w-full text-left">
               <thead>
                 <tr>
                   <th>Date</th>

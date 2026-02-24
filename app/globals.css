@@ -118,6 +118,13 @@ kbd {
   padding: 0.55rem 0.7rem;
 }
 
+.table-sticky thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+}
+
 .dense-table tbody td {
   padding: 0.58rem 0.7rem;
   border-bottom: 1px solid rgba(171, 197, 232, 0.08);
@@ -144,6 +151,17 @@ kbd {
     Menlo,
     monospace;
   font-variant-numeric: tabular-nums;
+}
+
+.table-scroll {
+  overflow: auto;
+  max-height: 72vh;
+}
+
+.side-rail {
+  position: sticky;
+  top: 5.75rem;
+  align-self: start;
 }
 
 @media (min-width: 1024px) {

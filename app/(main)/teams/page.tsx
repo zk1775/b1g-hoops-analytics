@@ -21,7 +21,35 @@ type TeamSummary = {
   nextGame: { id: number; date: number | null; opponent: string } | null;
 };
 
-export default async function TeamsPage() {
+type TeamsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+type SortKey = "team" | "record" | "last" | "next";
+type SortDir = "asc" | "desc";
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseSortKey(value: string | undefined): SortKey {
+  if (value === "record" || value === "last" || value === "next" || value === "team") {
+    return value;
+  }
+  return "team";
+}
+
+function parseSortDir(value: string | undefined, sort: SortKey): SortDir {
+  if (value === "asc" || value === "desc") {
+    return value;
+  }
+  return sort === "team" ? "asc" : "desc";
+}
+
+export default async function TeamsPage({ searchParams }: TeamsPageProps) {
+  const rawSearchParams = searchParams ? await searchParams : {};
+  const sort = parseSortKey(firstParam(rawSearchParams.sort));
+  const dir = parseSortDir(firstParam(rawSearchParams.dir), sort);
   const env = resolveDbEnv();
   if (!env) {
     return (
@@ -127,6 +155,73 @@ export default async function TeamsPage() {
     }
   }
 
+  const rows = b1gTeams.map((team) => ({
+    ...team,
+    summary: summaries.get(team.id)!,
+  }));
+
+  rows.sort((a, b) => {
+    const mult = dir === "asc" ? 1 : -1;
+    const aLast = a.summary.lastGame?.date ?? null;
+    const bLast = b.summary.lastGame?.date ?? null;
+    const aNext = a.summary.nextGame?.date ?? null;
+    const bNext = b.summary.nextGame?.date ?? null;
+
+    if (sort === "team") {
+      return a.name.localeCompare(b.name) * mult;
+    }
+
+    if (sort === "record") {
+      const aGames = a.summary.wins + a.summary.losses;
+      const bGames = b.summary.wins + b.summary.losses;
+      const aPct = aGames > 0 ? a.summary.wins / aGames : -1;
+      const bPct = bGames > 0 ? b.summary.wins / bGames : -1;
+      if (aPct !== bPct) {
+        return (aPct - bPct) * mult;
+      }
+      if (a.summary.wins !== b.summary.wins) {
+        return (a.summary.wins - b.summary.wins) * mult;
+      }
+      return a.name.localeCompare(b.name);
+    }
+
+    if (sort === "last") {
+      if (aLast === bLast) {
+        return a.name.localeCompare(b.name);
+      }
+      if (aLast === null) {
+        return 1;
+      }
+      if (bLast === null) {
+        return -1;
+      }
+      return (aLast - bLast) * mult;
+    }
+
+    if (aNext === bNext) {
+      return a.name.localeCompare(b.name);
+    }
+    if (aNext === null) {
+      return 1;
+    }
+    if (bNext === null) {
+      return -1;
+    }
+    return (aNext - bNext) * mult;
+  });
+
+  function sortHref(column: SortKey) {
+    const nextDir: SortDir = sort === column ? (dir === "asc" ? "desc" : "asc") : column === "team" ? "asc" : "desc";
+    return `/teams?sort=${column}&dir=${nextDir}`;
+  }
+
+  function sortIndicator(column: SortKey) {
+    if (sort !== column) {
+      return <span className="ml-1 text-[10px] text-muted">↕</span>;
+    }
+    return <span className="ml-1 text-[10px] text-accent">{dir === "asc" ? "↑" : "↓"}</span>;
+  }
+
   return (
     <section className="space-y-5">
       <div className="data-panel data-grid-bg rounded-2xl p-4 sm:p-5">
@@ -141,26 +236,46 @@ export default async function TeamsPage() {
             </p>
           </div>
           <span className="rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
-            {b1gTeams.length} teams
+            {b1gTeams.length} teams • sorted by {sort} ({dir})
           </span>
         </div>
       </div>
 
       <div className="data-panel overflow-hidden rounded-2xl">
-        <div className="overflow-x-auto">
-          <table className="dense-table min-w-full text-left">
+        <div className="table-scroll overflow-x-auto">
+          <table className="dense-table table-sticky min-w-full text-left">
             <thead>
               <tr>
-                <th>Team</th>
-                <th>Rec</th>
-                <th>Last Game</th>
-                <th>Next Game</th>
+                <th>
+                  <Link href={sortHref("team")} prefetch={false} className="inline-flex items-center hover:text-accent">
+                    Team
+                    {sortIndicator("team")}
+                  </Link>
+                </th>
+                <th>
+                  <Link href={sortHref("record")} prefetch={false} className="inline-flex items-center hover:text-accent">
+                    Rec
+                    {sortIndicator("record")}
+                  </Link>
+                </th>
+                <th>
+                  <Link href={sortHref("last")} prefetch={false} className="inline-flex items-center hover:text-accent">
+                    Last Game
+                    {sortIndicator("last")}
+                  </Link>
+                </th>
+                <th>
+                  <Link href={sortHref("next")} prefetch={false} className="inline-flex items-center hover:text-accent">
+                    Next Game
+                    {sortIndicator("next")}
+                  </Link>
+                </th>
                 <th>Profile</th>
               </tr>
             </thead>
             <tbody>
-              {b1gTeams.map((team) => {
-                const summary = summaries.get(team.id)!;
+              {rows.map((team) => {
+                const summary = team.summary;
                 return (
                   <tr key={team.id}>
                     <td>

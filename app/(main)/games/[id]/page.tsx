@@ -173,8 +173,8 @@ export default async function GamePage({ params }: GamePageProps) {
             <span className="stat-value text-xs text-muted">{stats.length} rows</span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="dense-table min-w-full text-left">
+          <div className="table-scroll overflow-x-auto">
+            <table className="dense-table table-sticky min-w-full text-left">
               <thead>
                 <tr>
                   <th>Team</th>
