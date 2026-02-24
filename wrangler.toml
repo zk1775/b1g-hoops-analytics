@@ -1,5 +1,6 @@
 name = "b1g-hoops-analytics"
 compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".vercel/output/static"
 
 [[d1_databases]]
