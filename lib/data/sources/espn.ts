@@ -312,8 +312,14 @@ function parseStatLine(
     ]),
   );
 
+  const parsedPoints = toInt(statDisplayValue(stats, ["points"]));
+  const derivedPoints =
+    fg.made !== null && threePoint.made !== null && ft.made !== null
+      ? 2 * fg.made + threePoint.made + ft.made
+      : null;
+
   return {
-    points: toInt(statDisplayValue(stats, ["points"])),
+    points: parsedPoints ?? derivedPoints,
     fgm: fg.made,
     fga: fg.attempts,
     fg3m: threePoint.made,
