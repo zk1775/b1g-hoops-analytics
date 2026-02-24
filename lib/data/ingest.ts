@@ -6,6 +6,7 @@ import {
 import { isFinalStatus } from "@/lib/data/status";
 import {
   upsertGame,
+  upsertPlayerGameStats,
   upsertTeamGameStats,
   upsertTeamsFromSchedule,
   type UpsertCounts,
@@ -36,6 +37,7 @@ export type IngestSummary = {
   teamsProcessed: number;
   gamesUpserted: number;
   statsUpserted: number;
+  playerStatsUpserted: number;
   counts: UpsertCounts;
   errors: IngestError[];
 };
@@ -50,6 +52,8 @@ function initCounts(): UpsertCounts {
     gamesUpdated: 0,
     statsInserted: 0,
     statsUpdated: 0,
+    playerStatsInserted: 0,
+    playerStatsUpdated: 0,
   };
 }
 
@@ -60,6 +64,8 @@ function addCounts(target: UpsertCounts, incoming: Partial<UpsertCounts>) {
   target.gamesUpdated += incoming.gamesUpdated ?? 0;
   target.statsInserted += incoming.statsInserted ?? 0;
   target.statsUpdated += incoming.statsUpdated ?? 0;
+  target.playerStatsInserted += incoming.playerStatsInserted ?? 0;
+  target.playerStatsUpdated += incoming.playerStatsUpdated ?? 0;
 }
 
 function parseIsoDate(value: string | undefined) {
@@ -114,6 +120,7 @@ export async function runIngest(env: DbEnv, input: IngestRequest): Promise<Inges
   const processedGameIds = new Set<string>();
   let gamesUpserted = 0;
   let statsUpserted = 0;
+  let playerStatsUpserted = 0;
   let teamsProcessed = 0;
 
   const conferenceTeams = await fetchBigTenEspnTeams();
@@ -179,6 +186,17 @@ export async function runIngest(env: DbEnv, input: IngestRequest): Promise<Inges
           });
           statsUpserted += stats.inserted + stats.updated;
           addCounts(counts, { statsInserted: stats.inserted, statsUpdated: stats.updated });
+
+          const playerStats = await upsertPlayerGameStats(db, {
+            gameId: gameUpsert.gameId,
+            teamIdBySlug: upsertTeams.teamIdBySlug,
+            boxscore,
+          });
+          playerStatsUpserted += playerStats.inserted + playerStats.updated;
+          addCounts(counts, {
+            playerStatsInserted: playerStats.inserted,
+            playerStatsUpdated: playerStats.updated,
+          });
         } catch (error) {
           errors.push({
             team: espnTeam.slug,
@@ -202,6 +220,7 @@ export async function runIngest(env: DbEnv, input: IngestRequest): Promise<Inges
     teamsProcessed,
     gamesUpserted,
     statsUpserted,
+    playerStatsUpserted,
     counts,
     errors,
   };

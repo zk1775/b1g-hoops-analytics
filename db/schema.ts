@@ -86,3 +86,63 @@ export const teamGameStats = sqliteTable(
     uniqueIndex("team_game_stats_game_team_unique").on(table.gameId, table.teamId),
   ],
 );
+
+export const players = sqliteTable(
+  "players",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    espnAthleteId: text("espn_athlete_id").notNull(),
+    teamId: integer("team_id").references(() => teams.id),
+    name: text("name").notNull(),
+    shortName: text("short_name"),
+    jersey: text("jersey"),
+    position: text("position"),
+    headshotUrl: text("headshot_url"),
+    active: integer("active", { mode: "boolean" }),
+    createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex("players_espn_athlete_id_unique").on(table.espnAthleteId),
+    index("players_team_idx").on(table.teamId),
+    index("players_name_idx").on(table.name),
+  ],
+);
+
+export const playerGameStats = sqliteTable(
+  "player_game_stats",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    gameId: integer("game_id").references(() => games.id),
+    teamId: integer("team_id").references(() => teams.id),
+    playerId: integer("player_id").references(() => players.id),
+    espnAthleteId: text("espn_athlete_id").notNull(),
+    isHome: integer("is_home", { mode: "boolean" }),
+    starter: integer("starter", { mode: "boolean" }),
+    didNotPlay: integer("did_not_play", { mode: "boolean" }),
+    minutes: text("minutes"),
+    minutesDecimal: real("minutes_decimal"),
+    points: integer("points"),
+    fgm: integer("fgm"),
+    fga: integer("fga"),
+    fg3m: integer("fg3m"),
+    fg3a: integer("fg3a"),
+    ftm: integer("ftm"),
+    fta: integer("fta"),
+    reb: integer("reb"),
+    ast: integer("ast"),
+    tov: integer("tov"),
+    stl: integer("stl"),
+    blk: integer("blk"),
+    oreb: integer("oreb"),
+    dreb: integer("dreb"),
+    pf: integer("pf"),
+    createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+  },
+  (table) => [
+    index("player_game_stats_game_idx").on(table.gameId),
+    index("player_game_stats_team_idx").on(table.teamId),
+    index("player_game_stats_player_idx").on(table.playerId),
+    index("player_game_stats_espn_player_idx").on(table.espnAthleteId),
+    uniqueIndex("player_game_stats_game_athlete_unique").on(table.gameId, table.espnAthleteId),
+  ],
+);

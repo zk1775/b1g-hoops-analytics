@@ -66,6 +66,38 @@ export type NormalizedGameBoxscore = {
   homeTeam: NormalizedTeamRef | null;
   awayTeam: NormalizedTeamRef | null;
   teams: NormalizedBoxscoreTeam[];
+  players: NormalizedPlayerGameStat[];
+};
+
+export type NormalizedPlayerGameStat = {
+  espnAthleteId: string;
+  team: NormalizedTeamRef;
+  isHome: boolean | null;
+  name: string;
+  shortName: string | null;
+  jersey: string | null;
+  position: string | null;
+  headshotUrl: string | null;
+  active: boolean | null;
+  starter: boolean | null;
+  didNotPlay: boolean | null;
+  minutes: string | null;
+  minutesDecimal: number | null;
+  points: number | null;
+  fgm: number | null;
+  fga: number | null;
+  fg3m: number | null;
+  fg3a: number | null;
+  ftm: number | null;
+  fta: number | null;
+  reb: number | null;
+  ast: number | null;
+  tov: number | null;
+  stl: number | null;
+  blk: number | null;
+  oreb: number | null;
+  dreb: number | null;
+  pf: number | null;
 };
 
 export type EspnConferenceTeam = {
@@ -149,6 +181,26 @@ function parseMadeAttempt(value: string | undefined) {
     made: toInt(madeRaw),
     attempts: toInt(attemptsRaw),
   };
+}
+
+function parseMinutesDecimal(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "--") {
+    return null;
+  }
+  if (trimmed.includes(":")) {
+    const [minRaw, secRaw] = trimmed.split(":");
+    const mins = toInt(minRaw);
+    const secs = toInt(secRaw);
+    if (mins === null || secs === null) {
+      return null;
+    }
+    return mins + secs / 60;
+  }
+  return toFloat(trimmed);
 }
 
 function statDisplayValue(
@@ -340,6 +392,111 @@ function parseStatLine(
   };
 }
 
+function parsePlayerStatSection(
+  teamRow: {
+    team?: EspnTeamLike;
+    statistics?: Array<{
+      labels?: string[];
+      athletes?: Array<{
+        active?: boolean;
+        starter?: boolean;
+        didNotPlay?: boolean;
+        athlete?: {
+          id?: string | number;
+          displayName?: string;
+          shortName?: string;
+          jersey?: string;
+          position?: { abbreviation?: string; displayName?: string; name?: string };
+          headshot?: { href?: string };
+        };
+        stats?: string[];
+      }>;
+    }>;
+  },
+  teamHomeAway: Map<string, boolean>,
+): NormalizedPlayerGameStat[] {
+  const competitorsTeamRef = parseTeamRef({ team: teamRow.team, score: undefined });
+  if (!competitorsTeamRef) {
+    return [];
+  }
+
+  const rows: NormalizedPlayerGameStat[] = [];
+  for (const section of teamRow.statistics ?? []) {
+    const labels = (section.labels ?? []).map((label) => label.trim().toUpperCase());
+    if (!labels.length) {
+      continue;
+    }
+
+    for (const athleteRow of section.athletes ?? []) {
+      const athlete = athleteRow.athlete;
+      const athleteId =
+        typeof athlete?.id === "string" || typeof athlete?.id === "number"
+          ? String(athlete.id)
+          : null;
+      if (!athleteId) {
+        continue;
+      }
+
+      const stats = athleteRow.stats ?? [];
+      const byLabel = new Map<string, string>();
+      labels.forEach((label, index) => {
+        byLabel.set(label, stats[index] ?? "");
+      });
+
+      const fg = parseMadeAttempt(byLabel.get("FG"));
+      const three = parseMadeAttempt(byLabel.get("3PT"));
+      const ft = parseMadeAttempt(byLabel.get("FT"));
+      const minutes = (byLabel.get("MIN") ?? "").trim() || null;
+      const points = toInt(byLabel.get("PTS"));
+
+      const teamRef = {
+        ...competitorsTeamRef,
+        score: null,
+      };
+
+      rows.push({
+        espnAthleteId: athleteId,
+        team: teamRef,
+        isHome:
+          competitorsTeamRef.espnTeamId && teamHomeAway.has(competitorsTeamRef.espnTeamId)
+            ? (teamHomeAway.get(competitorsTeamRef.espnTeamId) ?? null)
+            : null,
+        name: athlete?.displayName ?? athlete?.shortName ?? "Unknown Player",
+        shortName: athlete?.shortName ?? null,
+        jersey: athlete?.jersey ?? null,
+        position:
+          athlete?.position?.abbreviation ??
+          athlete?.position?.displayName ??
+          athlete?.position?.name ??
+          null,
+        headshotUrl: athlete?.headshot?.href ?? null,
+        active: typeof athleteRow.active === "boolean" ? athleteRow.active : null,
+        starter: typeof athleteRow.starter === "boolean" ? athleteRow.starter : null,
+        didNotPlay: typeof athleteRow.didNotPlay === "boolean" ? athleteRow.didNotPlay : null,
+        minutes,
+        minutesDecimal: parseMinutesDecimal(minutes),
+        points,
+        fgm: fg.made,
+        fga: fg.attempts,
+        fg3m: three.made,
+        fg3a: three.attempts,
+        ftm: ft.made,
+        fta: ft.attempts,
+        reb: toInt(byLabel.get("REB")),
+        ast: toInt(byLabel.get("AST")),
+        tov: toInt(byLabel.get("TO")),
+        stl: toInt(byLabel.get("STL")),
+        blk: toInt(byLabel.get("BLK")),
+        oreb: toInt(byLabel.get("OREB")),
+        dreb: toInt(byLabel.get("DREB")),
+        pf: toInt(byLabel.get("PF")),
+      });
+    }
+  }
+
+  return rows;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
@@ -479,6 +636,27 @@ export async function fetchGameBoxscore({
         team?: EspnTeamLike;
         statistics?: Array<{ name?: string; displayValue?: string; value?: string }>;
       }>;
+      players?: Array<{
+        team?: EspnTeamLike;
+        statistics?: Array<{
+          name?: string | null;
+          labels?: string[];
+          athletes?: Array<{
+            active?: boolean;
+            starter?: boolean;
+            didNotPlay?: boolean;
+            athlete?: {
+              id?: string | number;
+              displayName?: string;
+              shortName?: string;
+              jersey?: string;
+              position?: { abbreviation?: string; displayName?: string; name?: string };
+              headshot?: { href?: string };
+            };
+            stats?: string[];
+          }>;
+        }>;
+      }>;
     };
   };
 
@@ -517,6 +695,11 @@ export async function fetchGameBoxscore({
     });
   }
 
+  const playerRows: NormalizedPlayerGameStat[] = [];
+  for (const teamRow of payload.boxscore?.players ?? []) {
+    playerRows.push(...parsePlayerStatSection(teamRow, teamHomeAway));
+  }
+
   if (!homeTeam && !awayTeam && teamBoxscores.length === 0) {
     return null;
   }
@@ -535,6 +718,7 @@ export async function fetchGameBoxscore({
     homeTeam,
     awayTeam,
     teams: teamBoxscores,
+    players: playerRows,
   };
 }
 

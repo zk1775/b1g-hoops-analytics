@@ -1,6 +1,6 @@
 import { and, eq, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { games, teamGameStats, teams } from "@/db/schema";
+import { games, playerGameStats, players, teamGameStats, teams } from "@/db/schema";
 import { getB1GTeamBySlug, slugifyTeamName } from "@/lib/data/b1gTeams";
 import type {
   NormalizedBoxscoreTeam,
@@ -18,6 +18,8 @@ export type UpsertCounts = {
   gamesUpdated: number;
   statsInserted: number;
   statsUpdated: number;
+  playerStatsInserted: number;
+  playerStatsUpdated: number;
 };
 
 export type TeamIdMap = Map<string, number>;
@@ -30,6 +32,8 @@ function emptyCounts(): UpsertCounts {
     gamesUpdated: 0,
     statsInserted: 0,
     statsUpdated: 0,
+    playerStatsInserted: 0,
+    playerStatsUpdated: 0,
   };
 }
 
@@ -280,6 +284,135 @@ export async function upsertTeamGameStats(
         awayScore: inferredAwayScore ?? null,
       })
       .where(eq(games.id, params.gameId));
+  }
+
+  return counts;
+}
+
+async function ensurePlayer(
+  db: Db,
+  params: {
+    espnAthleteId: string;
+    teamId: number | null;
+    name: string;
+    shortName: string | null;
+    jersey: string | null;
+    position: string | null;
+    headshotUrl: string | null;
+    active: boolean | null;
+  },
+) {
+  const values = {
+    espnAthleteId: params.espnAthleteId,
+    teamId: params.teamId,
+    name: params.name,
+    shortName: params.shortName,
+    jersey: params.jersey,
+    position: params.position,
+    headshotUrl: params.headshotUrl,
+    active: params.active,
+  } as const;
+
+  const existing = await db
+    .select({ id: players.id })
+    .from(players)
+    .where(eq(players.espnAthleteId, params.espnAthleteId))
+    .limit(1);
+
+  if (existing[0]) {
+    await db.update(players).set(values).where(eq(players.id, existing[0].id));
+    return { id: existing[0].id, inserted: false };
+  }
+
+  const inserted = await db.insert(players).values(values).returning({ id: players.id });
+  if (inserted[0]) {
+    return { id: inserted[0].id, inserted: true };
+  }
+
+  const fallback = await db
+    .select({ id: players.id })
+    .from(players)
+    .where(eq(players.espnAthleteId, params.espnAthleteId))
+    .limit(1);
+  if (!fallback[0]) {
+    throw new Error(`Failed to upsert player ${params.name} (${params.espnAthleteId})`);
+  }
+  return { id: fallback[0].id, inserted: false };
+}
+
+export async function upsertPlayerGameStats(
+  db: Db,
+  params: {
+    gameId: number;
+    teamIdBySlug: TeamIdMap;
+    boxscore: NormalizedGameBoxscore;
+  },
+) {
+  const counts = { inserted: 0, updated: 0 };
+
+  for (const row of params.boxscore.players ?? []) {
+    const teamSlug = normalizeSlug(row.team);
+    const teamId = params.teamIdBySlug.get(teamSlug) ?? null;
+    if (!teamId) {
+      continue;
+    }
+
+    const player = await ensurePlayer(db, {
+      espnAthleteId: row.espnAthleteId,
+      teamId,
+      name: row.name,
+      shortName: row.shortName,
+      jersey: row.jersey,
+      position: row.position,
+      headshotUrl: row.headshotUrl,
+      active: row.active,
+    });
+
+    const values = {
+      gameId: params.gameId,
+      teamId,
+      playerId: player.id,
+      espnAthleteId: row.espnAthleteId,
+      isHome: row.isHome,
+      starter: row.starter,
+      didNotPlay: row.didNotPlay,
+      minutes: row.minutes,
+      minutesDecimal: row.minutesDecimal,
+      points: row.points,
+      fgm: row.fgm,
+      fga: row.fga,
+      fg3m: row.fg3m,
+      fg3a: row.fg3a,
+      ftm: row.ftm,
+      fta: row.fta,
+      reb: row.reb,
+      ast: row.ast,
+      tov: row.tov,
+      stl: row.stl,
+      blk: row.blk,
+      oreb: row.oreb,
+      dreb: row.dreb,
+      pf: row.pf,
+    } as const;
+
+    const existing = await db
+      .select({ id: playerGameStats.id })
+      .from(playerGameStats)
+      .where(
+        and(
+          eq(playerGameStats.gameId, params.gameId),
+          eq(playerGameStats.espnAthleteId, row.espnAthleteId),
+        ),
+      )
+      .limit(1);
+
+    if (existing[0]) {
+      await db.update(playerGameStats).set(values).where(eq(playerGameStats.id, existing[0].id));
+      counts.updated += 1;
+    } else {
+      await db.insert(playerGameStats).values(values);
+      counts.inserted += 1;
+    }
   }
 
   return counts;

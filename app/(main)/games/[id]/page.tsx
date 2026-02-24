@@ -2,7 +2,7 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { getDb } from "@/db/client";
-import { games, teamGameStats, teams } from "@/db/schema";
+import { games, playerGameStats, players, teamGameStats, teams } from "@/db/schema";
 import { resolveDbEnv } from "@/lib/runtime/env";
 
 export const runtime = "edge";
@@ -16,6 +16,16 @@ function formatDate(timestamp: number | null) {
     return "TBD";
   }
   return new Date(timestamp * 1000).toLocaleString();
+}
+
+function formatMinutes(minutes: string | null, minutesDecimal: number | null) {
+  if (minutes && minutes.trim()) {
+    return minutes;
+  }
+  if (minutesDecimal === null || minutesDecimal === undefined) {
+    return "-";
+  }
+  return Number(minutesDecimal).toFixed(1);
 }
 
 export default async function GamePage({ params }: GamePageProps) {
@@ -109,6 +119,43 @@ export default async function GamePage({ params }: GamePageProps) {
   const awayStatsRow = stats.find((row) => row.isHome === false) ?? null;
   const resolvedHomeScore = game.homeScore ?? homeStatsRow?.points ?? null;
   const resolvedAwayScore = game.awayScore ?? awayStatsRow?.points ?? null;
+
+  const playerRows = await db
+    .select({
+      id: playerGameStats.id,
+      teamId: playerGameStats.teamId,
+      isHome: playerGameStats.isHome,
+      starter: playerGameStats.starter,
+      didNotPlay: playerGameStats.didNotPlay,
+      minutes: playerGameStats.minutes,
+      minutesDecimal: playerGameStats.minutesDecimal,
+      points: playerGameStats.points,
+      fgm: playerGameStats.fgm,
+      fga: playerGameStats.fga,
+      fg3m: playerGameStats.fg3m,
+      fg3a: playerGameStats.fg3a,
+      ftm: playerGameStats.ftm,
+      fta: playerGameStats.fta,
+      reb: playerGameStats.reb,
+      ast: playerGameStats.ast,
+      tov: playerGameStats.tov,
+      stl: playerGameStats.stl,
+      blk: playerGameStats.blk,
+      oreb: playerGameStats.oreb,
+      dreb: playerGameStats.dreb,
+      pf: playerGameStats.pf,
+      playerName: players.name,
+      playerShortName: players.shortName,
+      jersey: players.jersey,
+      position: players.position,
+    })
+    .from(playerGameStats)
+    .leftJoin(players, eq(playerGameStats.playerId, players.id))
+    .where(eq(playerGameStats.gameId, gameId))
+    .orderBy(desc(playerGameStats.isHome), desc(playerGameStats.starter), desc(playerGameStats.points));
+
+  const homePlayerRows = playerRows.filter((row) => row.isHome === true);
+  const awayPlayerRows = playerRows.filter((row) => row.isHome === false);
 
   return (
     <section className="space-y-5">
@@ -236,6 +283,99 @@ export default async function GamePage({ params }: GamePageProps) {
           </div>
         </div>
       )}
+
+      {playerRows.length > 0 ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          {[
+            { label: game.awayName, isHome: false, rows: awayPlayerRows },
+            { label: game.homeName, isHome: true, rows: homePlayerRows },
+          ].map((group) => (
+            <div key={`${group.label}-${group.isHome ? "H" : "A"}`} className="data-panel overflow-hidden rounded-2xl">
+              <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
+                <div>
+                  <p className="stat-label">Player Boxscore</p>
+                  <p className="text-sm text-foreground/90">
+                    {group.label} {group.isHome ? "(Home)" : "(Away)"}
+                  </p>
+                </div>
+                <span className="stat-value text-xs text-muted">{group.rows.length} players</span>
+              </div>
+
+              <div className="table-scroll overflow-x-auto">
+                <table className="dense-table table-sticky min-w-[900px] text-left">
+                  <thead>
+                    <tr>
+                      <th>Player</th>
+                      <th>MIN</th>
+                      <th>PTS</th>
+                      <th>FG</th>
+                      <th>3PT</th>
+                      <th>FT</th>
+                      <th>REB</th>
+                      <th>AST</th>
+                      <th>TOV</th>
+                      <th>STL</th>
+                      <th>BLK</th>
+                      <th>OREB</th>
+                      <th>DREB</th>
+                      <th>PF</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.rows.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            {row.starter ? (
+                              <span className="rounded border border-accent/30 bg-accent/10 px-1 py-0.5 text-[10px] text-accent">
+                                S
+                              </span>
+                            ) : null}
+                            <span className="font-medium text-foreground">
+                              {row.playerName ?? row.playerShortName ?? "Unknown"}
+                            </span>
+                            {(row.jersey || row.position) && (
+                              <span className="text-[10px] text-muted">
+                                {[row.jersey ? `#${row.jersey}` : null, row.position].filter(Boolean).join(" ")}
+                              </span>
+                            )}
+                            {row.didNotPlay ? (
+                              <span className="rounded border border-line bg-panel px-1 py-0.5 text-[10px] text-muted">
+                                DNP
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="table-number">
+                          {row.didNotPlay ? "-" : formatMinutes(row.minutes, row.minutesDecimal)}
+                        </td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.points ?? "-")}</td>
+                        <td className="table-number">
+                          {row.didNotPlay ? "-" : `${row.fgm ?? "-"}-${row.fga ?? "-"}`}
+                        </td>
+                        <td className="table-number">
+                          {row.didNotPlay ? "-" : `${row.fg3m ?? "-"}-${row.fg3a ?? "-"}`}
+                        </td>
+                        <td className="table-number">
+                          {row.didNotPlay ? "-" : `${row.ftm ?? "-"}-${row.fta ?? "-"}`}
+                        </td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.reb ?? "-")}</td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.ast ?? "-")}</td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.tov ?? "-")}</td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.stl ?? "-")}</td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.blk ?? "-")}</td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.oreb ?? "-")}</td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.dreb ?? "-")}</td>
+                        <td className="table-number">{row.didNotPlay ? "-" : (row.pf ?? "-")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
