@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runIngest, type IngestRequest, type IngestMode } from "@/lib/data/ingest";
-import { requireRuntimeEnv } from "@/lib/runtime/env";
+import { requireRuntimeEnv, resolveAdminToken } from "@/lib/runtime/env";
 
 export const runtime = "edge";
 
@@ -72,7 +72,7 @@ async function handleIngest(request: NextRequest, source: "query" | "body") {
     );
   }
 
-  const adminToken = env.ADMIN_TOKEN?.trim() ?? null;
+  const adminToken = resolveAdminToken(env);
   if (!isAuthorized(request, adminToken)) {
     return NextResponse.json({ status: "error", message: "Unauthorized" }, { status: 401 });
   }
