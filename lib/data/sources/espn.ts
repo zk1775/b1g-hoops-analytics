@@ -377,7 +377,7 @@ async function fetchTeamScheduleByType(espnTeamId: string, season: number, seaso
 export async function fetchBigTenEspnTeams(): Promise<EspnConferenceTeam[]> {
   const url = new URL(TEAMS_ENDPOINT);
   url.searchParams.set("groups", "7");
-  url.searchParams.set("limit", "100");
+  url.searchParams.set("limit", "500");
 
   type Payload = {
     sports?: Array<{
