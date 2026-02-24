@@ -189,6 +189,8 @@ export async function upsertTeamGameStats(
 ) {
   const counts = { inserted: 0, updated: 0 };
   const bySlug = new Map<string, NormalizedBoxscoreTeam>();
+  let inferredHomeScore: number | null = null;
+  let inferredAwayScore: number | null = null;
 
   for (const entry of params.boxscore.teams) {
     bySlug.set(normalizeSlug(entry.team), entry);
@@ -212,12 +214,30 @@ export async function upsertTeamGameStats(
       entry.stats.possessionsEst ??
       (opponent ? addPossessionsEstimate(entry.stats, opponent.stats) : null);
 
+    const derivedPoints =
+      entry.stats.fgm !== null &&
+      entry.stats.fgm !== undefined &&
+      (entry.stats.fg3m ?? entry.stats.tpm) !== null &&
+      (entry.stats.fg3m ?? entry.stats.tpm) !== undefined &&
+      entry.stats.ftm !== null &&
+      entry.stats.ftm !== undefined
+        ? 2 * entry.stats.fgm + (entry.stats.fg3m ?? entry.stats.tpm ?? 0) + entry.stats.ftm
+        : null;
+    const resolvedPoints = entry.stats.points ?? entry.team.score ?? derivedPoints;
+
+    if (entry.isHome === true && resolvedPoints !== null) {
+      inferredHomeScore = resolvedPoints;
+    }
+    if (entry.isHome === false && resolvedPoints !== null) {
+      inferredAwayScore = resolvedPoints;
+    }
+
     const values = {
       gameId: params.gameId,
       teamId,
       oppTeamId: opponentId,
       isHome: entry.isHome,
-      points: entry.stats.points ?? entry.team.score,
+      points: resolvedPoints,
       fgm: entry.stats.fgm ?? null,
       fga: entry.stats.fga ?? null,
       fg3m: entry.stats.fg3m ?? entry.stats.tpm ?? null,
@@ -250,6 +270,16 @@ export async function upsertTeamGameStats(
       await db.insert(teamGameStats).values(values);
       counts.inserted += 1;
     }
+  }
+
+  if (inferredHomeScore !== null || inferredAwayScore !== null) {
+    await db
+      .update(games)
+      .set({
+        homeScore: inferredHomeScore ?? null,
+        awayScore: inferredAwayScore ?? null,
+      })
+      .where(eq(games.id, params.gameId));
   }
 
   return counts;
