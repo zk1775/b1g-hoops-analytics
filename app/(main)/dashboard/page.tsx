@@ -22,6 +22,8 @@ type TeamMetricRow = {
   games: number;
   wins: number;
   losses: number;
+  confWins: number;
+  confLosses: number;
   pointsFor: number;
   pointsAgainst: number;
   possessions: number;
@@ -216,6 +218,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       games: 0,
       wins: 0,
       losses: 0,
+      confWins: 0,
+      confLosses: 0,
       pointsFor: 0,
       pointsAgainst: 0,
       possessions: 0,
@@ -263,8 +267,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     if (points !== null && oppPoints !== null) {
       if (points > oppPoints) {
         bucket.wins += 1;
+        if (row.oppConference === "Big Ten") {
+          bucket.confWins += 1;
+        }
       } else if (points < oppPoints) {
         bucket.losses += 1;
+        if (row.oppConference === "Big Ten") {
+          bucket.confLosses += 1;
+        }
       }
     }
 
@@ -429,6 +439,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   <th>Team</th>
                   <th>G</th>
                   <th>Rec</th>
+                  <th>Conf Rec</th>
                   <th>AdjOE</th>
                   <th>AdjDE</th>
                   <th>Net</th>
@@ -464,6 +475,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     <td className="table-number">
                       <span className="font-medium text-foreground/95">
                         {row.wins}-{row.losses}
+                      </span>
+                    </td>
+                    <td className="table-number">
+                      <span className="font-medium text-foreground/95">
+                        {row.confWins}-{row.confLosses}
                       </span>
                     </td>
                     <td>
