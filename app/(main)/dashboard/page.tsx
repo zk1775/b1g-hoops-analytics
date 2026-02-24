@@ -42,7 +42,11 @@ export default async function DashboardPage() {
         <ul className="grid gap-2 sm:grid-cols-2">
           {teamRows.map((team) => (
             <li key={team.slug} className="rounded border border-black/10 p-3 text-sm">
-              <Link href={`/teams/${team.slug}`} className="font-medium hover:underline">
+              <Link
+                href={`/teams/${team.slug}`}
+                prefetch={false}
+                className="font-medium hover:underline"
+              >
                 {team.name}
               </Link>
             </li>

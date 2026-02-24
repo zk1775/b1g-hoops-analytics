@@ -169,7 +169,11 @@ export default async function TeamPage({ params }: TeamPageProps) {
                   <tr key={game.id} className="border-b border-black/10 last:border-0">
                     <td className="px-3 py-2">{formatDate(game.date)}</td>
                     <td className="px-3 py-2">
-                      <Link href={`/teams/${opponentSlug}`} className="hover:underline">
+                      <Link
+                        href={`/teams/${opponentSlug}`}
+                        prefetch={false}
+                        className="hover:underline"
+                      >
                         {opponentName}
                       </Link>
                     </td>
@@ -178,7 +182,7 @@ export default async function TeamPage({ params }: TeamPageProps) {
                     </td>
                     <td className="px-3 py-2">{game.venue ?? "-"}</td>
                     <td className="px-3 py-2">
-                      <Link href={`/games/${game.id}`} className="hover:underline">
+                      <Link href={`/games/${game.id}`} prefetch={false} className="hover:underline">
                         View
                       </Link>
                     </td>

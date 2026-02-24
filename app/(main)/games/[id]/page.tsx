@@ -122,6 +122,7 @@ export default async function GamePage({ params }: GamePageProps) {
             Run ingest with boxscores enabled:{" "}
             <Link
               href={`/api/ingest?mode=all&includeBoxscore=true&token=YOUR_ADMIN_TOKEN`}
+              prefetch={false}
               className="font-medium hover:underline"
             >
               /api/ingest?mode=all&includeBoxscore=true&token=YOUR_ADMIN_TOKEN

@@ -135,7 +135,11 @@ export default async function TeamsPage() {
             <li key={team.id} className="rounded border border-black/10 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <Link href={`/teams/${team.slug}`} className="font-medium hover:underline">
+                  <Link
+                    href={`/teams/${team.slug}`}
+                    prefetch={false}
+                    className="font-medium hover:underline"
+                  >
                     {team.name}
                   </Link>
                   <p className="text-sm text-black/70">
@@ -146,7 +150,11 @@ export default async function TeamsPage() {
                   <p>
                     Last:{" "}
                     {summary.lastGame ? (
-                      <Link href={`/games/${summary.lastGame.id}`} className="hover:underline">
+                      <Link
+                        href={`/games/${summary.lastGame.id}`}
+                        prefetch={false}
+                        className="hover:underline"
+                      >
                         {summary.lastGame.opponent} ({formatDate(summary.lastGame.date)})
                       </Link>
                     ) : (
@@ -156,7 +164,11 @@ export default async function TeamsPage() {
                   <p>
                     Next:{" "}
                     {summary.nextGame ? (
-                      <Link href={`/games/${summary.nextGame.id}`} className="hover:underline">
+                      <Link
+                        href={`/games/${summary.nextGame.id}`}
+                        prefetch={false}
+                        className="hover:underline"
+                      >
                         {summary.nextGame.opponent} ({formatDate(summary.nextGame.date)})
                       </Link>
                     ) : (

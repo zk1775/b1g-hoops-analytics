@@ -16,6 +16,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className="text-sm font-medium hover:underline"
             >
               {item.label}
