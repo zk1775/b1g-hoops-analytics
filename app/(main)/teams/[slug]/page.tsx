@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, or, sql } from "drizzle-orm";
+import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { getDb } from "@/db/client";
 import { games, teamGameStats, teams } from "@/db/schema";
@@ -92,16 +92,56 @@ export default async function TeamPage({ params }: TeamPageProps) {
     .where(or(eq(games.homeTeamId, team.id), eq(games.awayTeamId, team.id)))
     .orderBy(desc(games.date), desc(games.id));
 
+  const scheduleGameIds = schedule.map((game) => game.id);
+  const statRows =
+    scheduleGameIds.length > 0
+      ? await db
+          .select({
+            gameId: teamGameStats.gameId,
+            teamId: teamGameStats.teamId,
+            points: teamGameStats.points,
+          })
+          .from(teamGameStats)
+          .where(inArray(teamGameStats.gameId, scheduleGameIds))
+      : [];
+
+  const pointsByGameTeam = new Map<string, number | null>();
+  for (const row of statRows) {
+    if (row.gameId === null || row.teamId === null) {
+      continue;
+    }
+    pointsByGameTeam.set(`${row.gameId}:${row.teamId}`, row.points ?? null);
+  }
+
+  function resolveGameScores(game: (typeof schedule)[number]) {
+    const homeScore =
+      game.homeScore ??
+      (game.homeTeamId !== null
+        ? (pointsByGameTeam.get(`${game.id}:${game.homeTeamId}`) ?? null)
+        : null);
+    const awayScore =
+      game.awayScore ??
+      (game.awayTeamId !== null
+        ? (pointsByGameTeam.get(`${game.id}:${game.awayTeamId}`) ?? null)
+        : null);
+    return { homeScore, awayScore };
+  }
+
   let finalGamesCount = 0;
   let totalPointsFor = 0;
   let totalPointsAgainst = 0;
   for (const game of schedule) {
-    if (!isFinalStatus(game.status) || game.homeScore === null || game.awayScore === null) {
+    const resolvedScores = resolveGameScores(game);
+    if (
+      !isFinalStatus(game.status) ||
+      resolvedScores.homeScore === null ||
+      resolvedScores.awayScore === null
+    ) {
       continue;
     }
     const isHome = game.homeTeamId === team.id;
-    totalPointsFor += isHome ? game.homeScore : game.awayScore;
-    totalPointsAgainst += isHome ? game.awayScore : game.homeScore;
+    totalPointsFor += isHome ? resolvedScores.homeScore : resolvedScores.awayScore;
+    totalPointsAgainst += isHome ? resolvedScores.awayScore : resolvedScores.homeScore;
     finalGamesCount += 1;
   }
 
@@ -165,6 +205,7 @@ export default async function TeamPage({ params }: TeamPageProps) {
                 const isHome = game.homeTeamId === team.id;
                 const opponentName = isHome ? game.awayName : game.homeName;
                 const opponentSlug = isHome ? game.awaySlug : game.homeSlug;
+                const resolvedScores = resolveGameScores(game);
                 return (
                   <tr key={game.id} className="border-b border-black/10 last:border-0">
                     <td className="px-3 py-2">{formatDate(game.date)}</td>
@@ -178,7 +219,12 @@ export default async function TeamPage({ params }: TeamPageProps) {
                       </Link>
                     </td>
                     <td className="px-3 py-2">
-                      {formatResult(game.status, isHome, game.homeScore, game.awayScore)}
+                      {formatResult(
+                        game.status,
+                        isHome,
+                        resolvedScores.homeScore,
+                        resolvedScores.awayScore,
+                      )}
                     </td>
                     <td className="px-3 py-2">{game.venue ?? "-"}</td>
                     <td className="px-3 py-2">

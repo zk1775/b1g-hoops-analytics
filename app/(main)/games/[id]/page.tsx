@@ -100,6 +100,11 @@ export default async function GamePage({ params }: GamePageProps) {
     .where(eq(teamGameStats.gameId, gameId))
     .orderBy(desc(teamGameStats.isHome), desc(teamGameStats.id));
 
+  const homeStatsRow = stats.find((row) => row.isHome === true) ?? null;
+  const awayStatsRow = stats.find((row) => row.isHome === false) ?? null;
+  const resolvedHomeScore = game.homeScore ?? homeStatsRow?.points ?? null;
+  const resolvedAwayScore = game.awayScore ?? awayStatsRow?.points ?? null;
+
   return (
     <section className="space-y-4">
       <div className="space-y-1">
@@ -111,7 +116,7 @@ export default async function GamePage({ params }: GamePageProps) {
           {game.venue ? ` • ${game.venue}` : ""}
         </p>
         <p className="text-lg font-medium">
-          {game.awayName} {game.awayScore ?? "-"} - {game.homeName} {game.homeScore ?? "-"}
+          {game.awayName} {resolvedAwayScore ?? "-"} - {game.homeName} {resolvedHomeScore ?? "-"}
         </p>
       </div>
 
