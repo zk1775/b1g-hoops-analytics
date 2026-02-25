@@ -3,7 +3,6 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { getDb } from "@/db/client";
 import { games, teamGameStats, teams } from "@/db/schema";
-import IngestButton from "@/app/(main)/components/IngestButton";
 import { resolveDbEnv } from "@/lib/runtime/env";
 
 export const runtime = "edge";
@@ -451,7 +450,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   return (
     <section className="space-y-5">
       <div className="data-panel data-grid-bg rounded-2xl p-4 sm:p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="space-y-3">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
               <span className="inline-block h-2 w-2 rounded-full bg-accent-2" />
@@ -517,10 +516,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 <p className="stat-value mt-1 text-lg text-white">{pendingGames}</p>
               </div>
             </div>
-          </div>
-
-          <div className="w-full xl:max-w-md">
-            <IngestButton />
           </div>
         </div>
       </div>
