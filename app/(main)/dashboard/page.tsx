@@ -54,6 +54,12 @@ type MetricKey =
   | "ftRate"
   | "pace";
 
+type TeamGameEfficiencySample = {
+  oppTeamId: number | null;
+  offEff: number;
+  defEff: number;
+};
+
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -98,6 +104,92 @@ function rankValues(
     ranks.set(entry.teamId, displayRank);
   });
   return ranks;
+}
+
+function average(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function toneFromRank(rank: number | undefined, totalRows: number): "default" | "good" | "bad" {
+  if (!rank || totalRows < 3) {
+    return "default";
+  }
+  const tierSize = Math.max(1, Math.floor(totalRows / 3));
+  if (rank <= tierSize) {
+    return "good";
+  }
+  if (rank > totalRows - tierSize) {
+    return "bad";
+  }
+  return "default";
+}
+
+function computeOpponentAdjustedEfficiencies(params: {
+  teamIds: number[];
+  samplesByTeamId: Map<number, TeamGameEfficiencySample[]>;
+}) {
+  const allSamples = Array.from(params.samplesByTeamId.values()).flat();
+  const leagueBaseline =
+    average(allSamples.map((sample) => sample.offEff)) ??
+    average(allSamples.map((sample) => sample.defEff)) ??
+    100;
+
+  const offRatings = new Map<number, number>();
+  const defRatings = new Map<number, number>();
+
+  for (const teamId of params.teamIds) {
+    const samples = params.samplesByTeamId.get(teamId) ?? [];
+    offRatings.set(teamId, average(samples.map((sample) => sample.offEff)) ?? leagueBaseline);
+    defRatings.set(teamId, average(samples.map((sample) => sample.defEff)) ?? leagueBaseline);
+  }
+
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const nextOff = new Map<number, number>();
+    const nextDef = new Map<number, number>();
+
+    for (const teamId of params.teamIds) {
+      const samples = params.samplesByTeamId.get(teamId) ?? [];
+      if (samples.length === 0) {
+        nextOff.set(teamId, offRatings.get(teamId) ?? leagueBaseline);
+        nextDef.set(teamId, defRatings.get(teamId) ?? leagueBaseline);
+        continue;
+      }
+
+      const adjustedOffSamples: number[] = [];
+      const adjustedDefSamples: number[] = [];
+
+      for (const sample of samples) {
+        const oppDef =
+          sample.oppTeamId !== null ? (defRatings.get(sample.oppTeamId) ?? leagueBaseline) : leagueBaseline;
+        const oppOff =
+          sample.oppTeamId !== null ? (offRatings.get(sample.oppTeamId) ?? leagueBaseline) : leagueBaseline;
+
+        adjustedOffSamples.push(sample.offEff * (leagueBaseline / oppDef));
+        adjustedDefSamples.push(sample.defEff * (leagueBaseline / oppOff));
+      }
+
+      const rawAdjOff = average(adjustedOffSamples) ?? leagueBaseline;
+      const rawAdjDef = average(adjustedDefSamples) ?? leagueBaseline;
+
+      // Light damping keeps the iterative estimates stable with uneven OOC samples.
+      nextOff.set(teamId, 0.9 * rawAdjOff + 0.1 * leagueBaseline);
+      nextDef.set(teamId, 0.9 * rawAdjDef + 0.1 * leagueBaseline);
+    }
+
+    offRatings.clear();
+    defRatings.clear();
+    for (const [teamId, value] of nextOff) {
+      offRatings.set(teamId, value);
+    }
+    for (const [teamId, value] of nextDef) {
+      defRatings.set(teamId, value);
+    }
+  }
+
+  return { offRatings, defRatings, leagueBaseline };
 }
 
 function MetricCell({
@@ -209,6 +301,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const pendingGames = Math.max(0, summary.totalGames - summary.finalGames);
 
   const aggregates = new Map<number, TeamMetricRow>();
+  const samplesByTeamId = new Map<number, TeamGameEfficiencySample[]>();
   for (const team of b1gTeams) {
     aggregates.set(team.id, {
       teamId: team.id,
@@ -239,6 +332,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ftRate: null,
       pace: null,
     });
+    samplesByTeamId.set(team.id, []);
   }
 
   for (const row of statRows) {
@@ -285,12 +379,31 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     bucket.tov += row.tov ?? 0;
     bucket.oreb += row.oreb ?? 0;
     bucket.oppDreb += row.oppDreb ?? 0;
-    bucket.possessions += Number(row.possessionsEst ?? 0);
+    const possessions = Number(row.possessionsEst ?? 0);
+    bucket.possessions += possessions;
+
+    if (points !== null && oppPoints !== null && Number.isFinite(possessions) && possessions > 0) {
+      const teamSamples = samplesByTeamId.get(row.teamId);
+      if (teamSamples) {
+        teamSamples.push({
+          oppTeamId: row.oppTeamId,
+          offEff: (points / possessions) * 100,
+          defEff: (oppPoints / possessions) * 100,
+        });
+      }
+    }
   }
 
+  const adjustedEff = computeOpponentAdjustedEfficiencies({
+    teamIds: b1gTeams.map((team) => team.id),
+    samplesByTeamId,
+  });
+
   const metricRows = Array.from(aggregates.values()).map((row) => {
-    const offEff = safePct(row.pointsFor, row.possessions);
-    const defEff = safePct(row.pointsAgainst, row.possessions);
+    const rawOffEff = safePct(row.pointsFor, row.possessions);
+    const rawDefEff = safePct(row.pointsAgainst, row.possessions);
+    const offEff = adjustedEff.offRatings.get(row.teamId) ?? rawOffEff;
+    const defEff = adjustedEff.defRatings.get(row.teamId) ?? rawDefEff;
     const efgPct = safePct(row.fgm + 0.5 * row.fg3m, row.fga);
     const tovPct = safePct(row.tov, row.possessions);
     const orbPct = safePct(row.oreb, row.oreb + row.oppDreb);
@@ -417,13 +530,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <code className="rounded bg-panel px-1 py-0.5 text-foreground/90">npm run seed:b1g</code>.
         </div>
       ) : (
-        <div className="data-panel overflow-hidden rounded-2xl">
+      <div className="data-panel overflow-hidden rounded-2xl">
           <div className="flex items-center justify-between border-b border-line px-3 py-2.5 sm:px-4">
             <div>
               <p className="stat-label">B1G Advanced Metrics (Ranked)</p>
               <p className="text-sm text-foreground/90">
-                Values shown with B1G rank in each metric. `Adj` labels are tempo-adjusted approximations
-                from boxscore-derived possessions.
+                Values shown with B1G rank in each metric. Adj efficiencies are opponent-adjusted via
+                iterative B1G normalization with a neutral baseline for OOC opponents.
               </p>
             </div>
             <span className="stat-value text-xs text-muted">
@@ -440,8 +553,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   <th>G</th>
                   <th>Rec</th>
                   <th>Conf Rec</th>
-                  <th>AdjOE</th>
-                  <th>AdjDE</th>
+                  <th>AdjOE*</th>
+                  <th>AdjDE*</th>
                   <th>Net</th>
                   <th>eFG%</th>
                   <th>TOV%</th>
@@ -483,25 +596,53 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       </span>
                     </td>
                     <td>
-                      <MetricCell value={row.offEff} rank={rankMaps.offEff.get(row.teamId)} tone="good" />
+                      <MetricCell
+                        value={row.offEff}
+                        rank={rankMaps.offEff.get(row.teamId)}
+                        tone={toneFromRank(rankMaps.offEff.get(row.teamId), sortedRows.length)}
+                      />
                     </td>
                     <td>
-                      <MetricCell value={row.defEff} rank={rankMaps.defEff.get(row.teamId)} />
+                      <MetricCell
+                        value={row.defEff}
+                        rank={rankMaps.defEff.get(row.teamId)}
+                        tone={toneFromRank(rankMaps.defEff.get(row.teamId), sortedRows.length)}
+                      />
                     </td>
                     <td>
-                      <MetricCell value={row.netEff} rank={rankMaps.netEff.get(row.teamId)} tone={row.netEff !== null && row.netEff >= 0 ? "good" : "bad"} />
+                      <MetricCell
+                        value={row.netEff}
+                        rank={rankMaps.netEff.get(row.teamId)}
+                        tone={toneFromRank(rankMaps.netEff.get(row.teamId), sortedRows.length)}
+                      />
                     </td>
                     <td>
-                      <MetricCell value={row.efgPct} rank={rankMaps.efgPct.get(row.teamId)} />
+                      <MetricCell
+                        value={row.efgPct}
+                        rank={rankMaps.efgPct.get(row.teamId)}
+                        tone={toneFromRank(rankMaps.efgPct.get(row.teamId), sortedRows.length)}
+                      />
                     </td>
                     <td>
-                      <MetricCell value={row.tovPct} rank={rankMaps.tovPct.get(row.teamId)} />
+                      <MetricCell
+                        value={row.tovPct}
+                        rank={rankMaps.tovPct.get(row.teamId)}
+                        tone={toneFromRank(rankMaps.tovPct.get(row.teamId), sortedRows.length)}
+                      />
                     </td>
                     <td>
-                      <MetricCell value={row.orbPct} rank={rankMaps.orbPct.get(row.teamId)} />
+                      <MetricCell
+                        value={row.orbPct}
+                        rank={rankMaps.orbPct.get(row.teamId)}
+                        tone={toneFromRank(rankMaps.orbPct.get(row.teamId), sortedRows.length)}
+                      />
                     </td>
                     <td>
-                      <MetricCell value={row.ftRate} rank={rankMaps.ftRate.get(row.teamId)} />
+                      <MetricCell
+                        value={row.ftRate}
+                        rank={rankMaps.ftRate.get(row.teamId)}
+                        tone={toneFromRank(rankMaps.ftRate.get(row.teamId), sortedRows.length)}
+                      />
                     </td>
                     <td>
                       <MetricCell value={row.pace} rank={rankMaps.pace.get(row.teamId)} />
@@ -510,6 +651,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="border-t border-line/70 bg-panel/40 px-3 py-2 text-[11px] text-muted sm:px-4">
+            * `AdjOE` / `AdjDE` are opponent-adjusted within the current B1G sample (iterative normalization).
+            OOC opponents are treated as neutral baseline in `scope=all`.
           </div>
         </div>
       )}
