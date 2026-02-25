@@ -158,12 +158,6 @@ kbd {
   max-height: 72vh;
 }
 
-.top-rail {
-  position: sticky;
-  top: 5.75rem;
-  z-index: 10;
-}
-
 @media (min-width: 1024px) {
   .dense-table {
     font-size: 0.79rem;
