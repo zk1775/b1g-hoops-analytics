@@ -46,9 +46,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-6">
-        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="side-rail hidden lg:block">
-            <div className="space-y-3">
+        <div className="space-y-4">
+          <aside className="top-rail hidden lg:block">
+            <div className="grid gap-3 xl:grid-cols-[1.05fr_1fr_1.05fr]">
               <div className="data-panel rounded-xl p-3">
                 <p className="stat-label">Workspace</p>
                 <div className="mt-2 grid gap-1.5">

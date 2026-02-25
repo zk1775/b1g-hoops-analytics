@@ -544,8 +544,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </span>
           </div>
 
-          <div className="table-scroll overflow-x-auto">
-            <table className="dense-table table-sticky min-w-[1200px] text-left">
+          <div className="table-scroll">
+            <table className="dashboard-metrics-table dense-table table-sticky w-full text-left">
               <thead>
                 <tr>
                   <th>RK</th>
@@ -580,7 +580,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                           >
                             {row.name}
                           </Link>
-                          <p className="text-[10px] text-muted">{row.slug}</p>
+                          <p className="hidden text-[10px] text-muted xl:block">{row.slug}</p>
                         </div>
                       </div>
                     </td>
