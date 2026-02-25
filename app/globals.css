@@ -208,16 +208,26 @@ kbd {
     width: 2.4rem;
   }
 
-  .dashboard-metrics-table thead th:nth-child(4),
-  .dashboard-metrics-table tbody td:nth-child(4),
-  .dashboard-metrics-table thead th:nth-child(5),
-  .dashboard-metrics-table tbody td:nth-child(5) {
+  .dashboard-metrics-table--with-rec thead th:nth-child(4),
+  .dashboard-metrics-table--with-rec tbody td:nth-child(4),
+  .dashboard-metrics-table--with-rec thead th:nth-child(5),
+  .dashboard-metrics-table--with-rec tbody td:nth-child(5) {
     width: 3.9rem;
   }
 
-  .dashboard-metrics-table thead th:nth-child(n + 6),
-  .dashboard-metrics-table tbody td:nth-child(n + 6) {
+  .dashboard-metrics-table--with-rec thead th:nth-child(n + 6),
+  .dashboard-metrics-table--with-rec tbody td:nth-child(n + 6) {
     width: 4.5rem;
+  }
+
+  .dashboard-metrics-table--no-rec thead th:nth-child(4),
+  .dashboard-metrics-table--no-rec tbody td:nth-child(4) {
+    width: 3.9rem;
+  }
+
+  .dashboard-metrics-table--no-rec thead th:nth-child(n + 5),
+  .dashboard-metrics-table--no-rec tbody td:nth-child(n + 5) {
+    width: 4.7rem;
   }
 
   .dashboard-metrics-table .table-number {
@@ -248,8 +258,13 @@ kbd {
     width: 11.8rem;
   }
 
-  .dashboard-metrics-table thead th:nth-child(n + 6),
-  .dashboard-metrics-table tbody td:nth-child(n + 6) {
+  .dashboard-metrics-table--with-rec thead th:nth-child(n + 6),
+  .dashboard-metrics-table--with-rec tbody td:nth-child(n + 6) {
     width: 4.8rem;
+  }
+
+  .dashboard-metrics-table--no-rec thead th:nth-child(n + 5),
+  .dashboard-metrics-table--no-rec tbody td:nth-child(n + 5) {
+    width: 5rem;
   }
 }

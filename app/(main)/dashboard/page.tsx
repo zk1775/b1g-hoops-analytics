@@ -446,6 +446,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   });
 
   const scopeLabel = scope === "b1g" ? "B1G games only" : "All games";
+  const showOverallRecord = scope !== "b1g";
 
   return (
     <section className="space-y-5">
@@ -545,13 +546,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
 
           <div className="table-scroll">
-            <table className="dashboard-metrics-table dense-table table-sticky w-full text-left">
+            <table
+              className={[
+                "dashboard-metrics-table dense-table table-sticky w-full text-left",
+                showOverallRecord ? "dashboard-metrics-table--with-rec" : "dashboard-metrics-table--no-rec",
+              ].join(" ")}
+            >
               <thead>
                 <tr>
                   <th>RK</th>
                   <th>Team</th>
                   <th>G</th>
-                  <th>Rec</th>
+                  {showOverallRecord ? <th>Rec</th> : null}
                   <th>Conf Rec</th>
                   <th>AdjOE*</th>
                   <th>AdjDE*</th>
@@ -585,11 +591,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       </div>
                     </td>
                     <td className="table-number">{row.games}</td>
-                    <td className="table-number">
-                      <span className="font-medium text-foreground/95">
-                        {row.wins}-{row.losses}
-                      </span>
-                    </td>
+                    {showOverallRecord ? (
+                      <td className="table-number">
+                        <span className="font-medium text-foreground/95">
+                          {row.wins}-{row.losses}
+                        </span>
+                      </td>
+                    ) : null}
                     <td className="table-number">
                       <span className="font-medium text-foreground/95">
                         {row.confWins}-{row.confLosses}
