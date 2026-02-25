@@ -231,7 +231,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const oppTeams = alias(teams, "opp_teams");
   const oppStats = alias(teamGameStats, "opp_stats");
 
-  const [latestSeasonRows, b1gTeams, totalGamesRows, finalGamesRows, statRows] = await Promise.all([
+  const [latestSeasonRows, b1gTeams, statRows] = await Promise.all([
     db
       .select({
         season: sql<number>`max(${games.season})`,
@@ -247,13 +247,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .from(teams)
       .where(eq(teams.conference, "Big Ten"))
       .orderBy(asc(teams.name)),
-    db.select({ totalGames: sql<number>`count(*)` }).from(games),
-    db
-      .select({
-        finalGames: sql<number>`count(*)`,
-      })
-      .from(games)
-      .where(sql`lower(coalesce(${games.status}, '')) like 'final%'`),
     db
       .select({
         season: games.season,
@@ -292,10 +285,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   ]);
 
   const currentSeason = latestSeasonRows[0]?.season ?? new Date().getUTCFullYear();
+  const countHomeTeam = alias(teams, "count_home_team");
+  const countAwayTeam = alias(teams, "count_away_team");
+
+  const scopedGameCountsRows = await db
+    .select({
+      totalGames: sql<number>`count(*)`,
+      finalGames: sql<number>`sum(case when lower(coalesce(${games.status}, '')) like 'final%' then 1 else 0 end)`,
+    })
+    .from(games)
+    .innerJoin(countHomeTeam, eq(games.homeTeamId, countHomeTeam.id))
+    .innerJoin(countAwayTeam, eq(games.awayTeamId, countAwayTeam.id))
+    .where(
+      and(
+        eq(games.season, currentSeason),
+        scope === "b1g"
+          ? sql`(${countHomeTeam.conference} = 'Big Ten' or ${countAwayTeam.conference} = 'Big Ten')`
+          : sql`1 = 1`,
+      ),
+    );
+
   const summary = {
     totalTeams: b1gTeams.length,
-    totalGames: totalGamesRows[0]?.totalGames ?? 0,
-    finalGames: finalGamesRows[0]?.finalGames ?? 0,
+    totalGames: Number(scopedGameCountsRows[0]?.totalGames ?? 0),
+    finalGames: Number(scopedGameCountsRows[0]?.finalGames ?? 0),
   };
   const pendingGames = Math.max(0, summary.totalGames - summary.finalGames);
 
