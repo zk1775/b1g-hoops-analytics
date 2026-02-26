@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { B1G_SLUGS } from "@/lib/data/b1gTeams";
 import { runIngest } from "@/lib/data/ingest";
+import { runReconcile } from "@/lib/data/reconcile";
 import { fetchGameBoxscore, fetchScoreboard } from "@/lib/data/sources/espn";
 import { isFinalStatus } from "@/lib/data/status";
 import {
@@ -31,6 +32,17 @@ function parseInteger(value: string | null, fallback: number) {
   }
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function parseSources(value: string | null) {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry === "espn" || entry === "sports-reference");
+  return parsed.length ? (parsed as Array<"espn" | "sports-reference">) : undefined;
 }
 
 function extractToken(request: NextRequest) {
@@ -321,6 +333,19 @@ export async function GET(request: NextRequest) {
     if (strategy === "scoreboard") {
       const summary = await runScoreboardCronIngest(request, env);
       return NextResponse.json({ status: "ok", source: "cron", ...summary });
+    }
+
+    if (strategy === "reconcile") {
+      const summary = await runReconcile(env, {
+        season: parseInteger(params.get("season"), getCurrentSeasonYear()),
+        team: params.get("team")?.trim().toLowerCase() || undefined,
+        since: params.get("since") ?? undefined,
+        until: params.get("until") ?? undefined,
+        limit: parseInteger(params.get("limit"), 200),
+        includePlayerStats: parseBoolean(params.get("includePlayerStats"), true),
+        sources: parseSources(params.get("sources")),
+      });
+      return NextResponse.json({ status: "ok", source: "cron", strategy: "reconcile", ...summary });
     }
 
     const summary = await runBoundedTeamScheduleCronIngest(request, env);
