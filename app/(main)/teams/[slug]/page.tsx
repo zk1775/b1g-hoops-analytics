@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { getDb } from "@/db/client";
 import { games, playerGameStats, players, teamGameStats, teams } from "@/db/schema";
@@ -14,6 +14,12 @@ type TeamPageProps = {
 };
 
 type TeamScope = "all" | "b1g";
+
+type TeamGameEfficiencySample = {
+  oppTeamId: number | null;
+  offEff: number;
+  defEff: number;
+};
 
 function formatDate(timestamp: number | null) {
   if (!timestamp) {
@@ -128,6 +134,72 @@ function computeTeamGameScore(stats: {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function average(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function computeOpponentAdjustedEfficiencies(params: {
+  teamIds: number[];
+  samplesByTeamId: Map<number, TeamGameEfficiencySample[]>;
+}) {
+  const allSamples = Array.from(params.samplesByTeamId.values()).flat();
+  const leagueBaseline =
+    average(allSamples.map((sample) => sample.offEff)) ??
+    average(allSamples.map((sample) => sample.defEff)) ??
+    100;
+
+  const offRatings = new Map<number, number>();
+  const defRatings = new Map<number, number>();
+
+  for (const teamId of params.teamIds) {
+    const samples = params.samplesByTeamId.get(teamId) ?? [];
+    offRatings.set(teamId, average(samples.map((sample) => sample.offEff)) ?? leagueBaseline);
+    defRatings.set(teamId, average(samples.map((sample) => sample.defEff)) ?? leagueBaseline);
+  }
+
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const nextOff = new Map<number, number>();
+    const nextDef = new Map<number, number>();
+
+    for (const teamId of params.teamIds) {
+      const samples = params.samplesByTeamId.get(teamId) ?? [];
+      if (samples.length === 0) {
+        nextOff.set(teamId, offRatings.get(teamId) ?? leagueBaseline);
+        nextDef.set(teamId, defRatings.get(teamId) ?? leagueBaseline);
+        continue;
+      }
+
+      const adjustedOffSamples: number[] = [];
+      const adjustedDefSamples: number[] = [];
+
+      for (const sample of samples) {
+        const oppDef =
+          sample.oppTeamId !== null ? (defRatings.get(sample.oppTeamId) ?? leagueBaseline) : leagueBaseline;
+        const oppOff =
+          sample.oppTeamId !== null ? (offRatings.get(sample.oppTeamId) ?? leagueBaseline) : leagueBaseline;
+
+        adjustedOffSamples.push(sample.offEff * (leagueBaseline / oppDef));
+        adjustedDefSamples.push(sample.defEff * (leagueBaseline / oppOff));
+      }
+
+      const rawAdjOff = average(adjustedOffSamples) ?? leagueBaseline;
+      const rawAdjDef = average(adjustedDefSamples) ?? leagueBaseline;
+      nextOff.set(teamId, 0.9 * rawAdjOff + 0.1 * leagueBaseline);
+      nextDef.set(teamId, 0.9 * rawAdjDef + 0.1 * leagueBaseline);
+    }
+
+    offRatings.clear();
+    defRatings.clear();
+    for (const [teamId, value] of nextOff) offRatings.set(teamId, value);
+    for (const [teamId, value] of nextDef) defRatings.set(teamId, value);
+  }
+
+  return { offRatings, defRatings };
 }
 
 function percentile(sorted: number[], p: number) {
@@ -276,6 +348,75 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
   const currentSeason =
     schedule.reduce((max, game) => Math.max(max, game.season ?? 0), 0) || null;
 
+  const gsOppTeams = alias(teams, "gs_opp_team");
+  const gsOppStats = alias(teamGameStats, "gs_opp_stats");
+  const b1gNetSamplesRows =
+    currentSeason !== null
+      ? await db
+          .select({
+            teamId: teamGameStats.teamId,
+            oppTeamId: teamGameStats.oppTeamId,
+            oppConference: gsOppTeams.conference,
+            points: teamGameStats.points,
+            oppPoints: gsOppStats.points,
+            possessionsEst: teamGameStats.possessionsEst,
+          })
+          .from(teamGameStats)
+          .innerJoin(games, eq(teamGameStats.gameId, games.id))
+          .innerJoin(teams, eq(teamGameStats.teamId, teams.id))
+          .leftJoin(gsOppTeams, eq(teamGameStats.oppTeamId, gsOppTeams.id))
+          .leftJoin(
+            gsOppStats,
+            and(eq(gsOppStats.gameId, teamGameStats.gameId), eq(gsOppStats.teamId, teamGameStats.oppTeamId)),
+          )
+          .where(
+            and(
+              eq(games.season, currentSeason),
+              eq(teams.conference, "Big Ten"),
+              sql`lower(coalesce(${games.status}, '')) like 'final%'`,
+              scope === "b1g" ? eq(gsOppTeams.conference, "Big Ten") : sql`1 = 1`,
+            ),
+          )
+      : [];
+
+  const b1gNetTeamIds = new Set<number>();
+  const b1gNetSamplesByTeamId = new Map<number, TeamGameEfficiencySample[]>();
+  for (const row of b1gNetSamplesRows) {
+    if (
+      row.teamId === null ||
+      row.points === null ||
+      row.oppPoints === null ||
+      row.possessionsEst === null ||
+      row.possessionsEst <= 0
+    ) {
+      continue;
+    }
+
+    b1gNetTeamIds.add(row.teamId);
+    const bucket = b1gNetSamplesByTeamId.get(row.teamId) ?? [];
+    bucket.push({
+      oppTeamId: row.oppConference === "Big Ten" ? row.oppTeamId : null,
+      offEff: (row.points / row.possessionsEst) * 100,
+      defEff: (row.oppPoints / row.possessionsEst) * 100,
+    });
+    b1gNetSamplesByTeamId.set(row.teamId, bucket);
+  }
+
+  const b1gNetByTeamId = new Map<number, number>();
+  if (b1gNetTeamIds.size > 0) {
+    const { offRatings, defRatings } = computeOpponentAdjustedEfficiencies({
+      teamIds: [...b1gNetTeamIds],
+      samplesByTeamId: b1gNetSamplesByTeamId,
+    });
+    for (const teamId of b1gNetTeamIds) {
+      const off = offRatings.get(teamId);
+      const def = defRatings.get(teamId);
+      if (off !== undefined && def !== undefined) {
+        b1gNetByTeamId.set(teamId, off - def);
+      }
+    }
+  }
+
   const scopedOpponentIds = new Set<number>();
   for (const game of scopedSchedule) {
     if (game.homeTeamId !== null && game.homeTeamId !== team.id) {
@@ -366,10 +507,15 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
 
     let oppStrengthAdj = 0;
     if (oppTeamId !== null) {
-      const oppRecord = opponentRecordByTeamId.get(oppTeamId);
-      const oppGames = (oppRecord?.wins ?? 0) + (oppRecord?.losses ?? 0);
-      const oppWinPct = oppGames > 0 ? (oppRecord?.wins ?? 0) / oppGames : 0.5;
-      oppStrengthAdj = (oppWinPct - 0.5) * 16;
+      const oppNet = b1gNetByTeamId.get(oppTeamId);
+      if (oppNet !== undefined) {
+        oppStrengthAdj = clamp(oppNet * 0.35, -12, 12);
+      } else {
+        const oppRecord = opponentRecordByTeamId.get(oppTeamId);
+        const oppGames = (oppRecord?.wins ?? 0) + (oppRecord?.losses ?? 0);
+        const oppWinPct = oppGames > 0 ? (oppRecord?.wins ?? 0) / oppGames : 0.5;
+        oppStrengthAdj = (oppWinPct - 0.5) * 8;
+      }
     }
 
     const venueAdj = isHome ? 0 : 1.2;
@@ -771,7 +917,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
             </table>
           </div>
           <div className="border-t border-line px-3 py-2 text-[11px] text-muted sm:px-4">
-            GS blends boxscore production with scoring margin and an opponent-strength adjustment (scope-aware season win% proxy).
+            GS blends boxscore production with scoring margin and a B1G NET-style opponent adjustment (AdjOE* - AdjDE* for B1G opponents in the current season/scope; neutral/fallback proxy for OOC).
           </div>
         </div>
       )}
