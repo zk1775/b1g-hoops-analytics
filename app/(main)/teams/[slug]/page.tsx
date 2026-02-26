@@ -564,7 +564,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
             <p className="stat-label">Player Stats</p>
             <p className="text-sm text-foreground/90">
               {currentSeason ? `Season ${currentSeason}` : "Season totals"}{" "}
-              {scope === "b1g" ? "B1G-only" : "all-games"} player production, shooting splits, and PRPG*
+              {scope === "b1g" ? "B1G-only" : "all-games"} player production, shooting splits, and Impact+
             </p>
           </div>
           <span className="stat-value text-xs text-muted">{playerSeasonStats.length} players</span>
@@ -583,7 +583,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                   <th>GP</th>
                   <th>GS</th>
                   <th>MPG</th>
-                  <th>PRPG*</th>
+                  <th>Impact+</th>
                   <th>PPG</th>
                   <th>RPG</th>
                   <th>APG</th>
@@ -634,7 +634,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
           </div>
         )}
         <div className="border-t border-line px-3 py-2 text-[11px] text-muted sm:px-4">
-          PRPG* is a boxscore-derived per-game value proxy (scoring + playmaking + rebounds + defense, with turnover/missed-shot penalties).
+          Impact+ is a boxscore-derived per-game value proxy (scoring + playmaking + rebounds + defense, with turnover/missed-shot penalties).
         </div>
       </div>
     </section>
