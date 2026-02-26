@@ -126,6 +126,20 @@ function computeTeamGameScore(stats: {
   return Math.max(0, raw * 1.6);
 }
 
+function percentile(sorted: number[], p: number) {
+  if (sorted.length === 0) return null;
+  if (sorted.length === 1) return sorted[0] ?? null;
+  const clamped = Math.min(1, Math.max(0, p));
+  const index = (sorted.length - 1) * clamped;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  const lowerValue = sorted[lower] ?? 0;
+  const upperValue = sorted[upper] ?? 0;
+  if (lower === upper) return lowerValue;
+  const weight = index - lower;
+  return lowerValue + (upperValue - lowerValue) * weight;
+}
+
 export default async function TeamPage({ params, searchParams }: TeamPageProps) {
   const { slug } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
@@ -253,6 +267,26 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
         ? (pointsByGameTeam.get(`${game.id}:${game.awayTeamId}`) ?? null)
         : null);
     return { homeScore, awayScore };
+  }
+
+  const scopedGsValues = scopedSchedule
+    .map((game) => gameScoreByGameTeam.get(`${game.id}:${team.id}`) ?? null)
+    .filter((value): value is number => value !== null)
+    .sort((a, b) => a - b);
+  const gsLowCut = percentile(scopedGsValues, 1 / 3);
+  const gsHighCut = percentile(scopedGsValues, 2 / 3);
+
+  function gsToneClass(value: number | null) {
+    if (value === null || gsLowCut === null || gsHighCut === null) {
+      return "text-muted";
+    }
+    if (value >= gsHighCut) {
+      return "text-accent-2";
+    }
+    if (value <= gsLowCut) {
+      return "text-danger";
+    }
+    return "text-foreground/90";
   }
 
   let finalGamesCount = 0;
@@ -613,7 +647,9 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                           {resultText}
                         </span>
                       </td>
-                      <td className="table-number">{gameScore !== null ? Math.round(gameScore) : "-"}</td>
+                      <td className={["table-number font-medium", gsToneClass(gameScore)].join(" ")}>
+                        {gameScore !== null ? Math.round(gameScore) : "-"}
+                      </td>
                       <td className="text-muted">{game.venue ?? "-"}</td>
                       <td>
                         <Link
