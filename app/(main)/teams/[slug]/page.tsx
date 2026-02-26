@@ -83,6 +83,49 @@ function computePrpgProxy(row: {
   return productionValue / row.gp;
 }
 
+function computeTeamGameScore(stats: {
+  points: number | null;
+  fgm: number | null;
+  fga: number | null;
+  ftm: number | null;
+  fta: number | null;
+  oreb: number | null;
+  dreb: number | null;
+  ast: number | null;
+  stl: number | null;
+  blk: number | null;
+  tov: number | null;
+  pf: number | null;
+}) {
+  const pts = stats.points ?? 0;
+  const fgm = stats.fgm ?? 0;
+  const fga = stats.fga ?? 0;
+  const ftm = stats.ftm ?? 0;
+  const fta = stats.fta ?? 0;
+  const oreb = stats.oreb ?? 0;
+  const dreb = stats.dreb ?? 0;
+  const ast = stats.ast ?? 0;
+  const stl = stats.stl ?? 0;
+  const blk = stats.blk ?? 0;
+  const tov = stats.tov ?? 0;
+  const pf = stats.pf ?? 0;
+
+  const raw =
+    pts +
+    0.4 * fgm -
+    0.7 * fga -
+    0.4 * (fta - ftm) +
+    0.7 * oreb +
+    0.3 * dreb +
+    stl +
+    0.7 * ast +
+    0.7 * blk -
+    0.4 * pf -
+    tov;
+
+  return Math.max(0, raw * 1.6);
+}
+
 export default async function TeamPage({ params, searchParams }: TeamPageProps) {
   const { slug } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
@@ -156,17 +199,46 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
             gameId: teamGameStats.gameId,
             teamId: teamGameStats.teamId,
             points: teamGameStats.points,
+            fgm: teamGameStats.fgm,
+            fga: teamGameStats.fga,
+            ftm: teamGameStats.ftm,
+            fta: teamGameStats.fta,
+            oreb: teamGameStats.oreb,
+            dreb: teamGameStats.dreb,
+            ast: teamGameStats.ast,
+            stl: teamGameStats.stl,
+            blk: teamGameStats.blk,
+            tov: teamGameStats.tov,
+            pf: teamGameStats.pf,
           })
           .from(teamGameStats)
           .where(inArray(teamGameStats.gameId, scheduleGameIds))
       : [];
 
   const pointsByGameTeam = new Map<string, number | null>();
+  const gameScoreByGameTeam = new Map<string, number | null>();
   for (const row of statRows) {
     if (row.gameId === null || row.teamId === null) {
       continue;
     }
-    pointsByGameTeam.set(`${row.gameId}:${row.teamId}`, row.points ?? null);
+    const key = `${row.gameId}:${row.teamId}`;
+    pointsByGameTeam.set(key, row.points ?? null);
+
+    const hasBoxscoreStats =
+      row.points !== null ||
+      row.fgm !== null ||
+      row.fga !== null ||
+      row.ftm !== null ||
+      row.fta !== null ||
+      row.oreb !== null ||
+      row.dreb !== null ||
+      row.ast !== null ||
+      row.stl !== null ||
+      row.blk !== null ||
+      row.tov !== null ||
+      row.pf !== null;
+
+    gameScoreByGameTeam.set(key, hasBoxscoreStats ? computeTeamGameScore(row) : null);
   }
 
   function resolveGameScores(game: (typeof schedule)[number]) {
@@ -489,6 +561,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                   <th>Site</th>
                   <th>Opponent</th>
                   <th>Result</th>
+                  <th>GS</th>
                   <th>Venue</th>
                   <th>Game</th>
                 </tr>
@@ -505,6 +578,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                     resolvedScores.homeScore,
                     resolvedScores.awayScore,
                   );
+                  const gameScore = gameScoreByGameTeam.get(`${game.id}:${team.id}`) ?? null;
                   const isWin = resultText.startsWith("W ");
                   const isLoss = resultText.startsWith("L ");
 
@@ -539,6 +613,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                           {resultText}
                         </span>
                       </td>
+                      <td className="table-number">{gameScore !== null ? Math.round(gameScore) : "-"}</td>
                       <td className="text-muted">{game.venue ?? "-"}</td>
                       <td>
                         <Link
