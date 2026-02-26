@@ -648,7 +648,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                         </span>
                       </td>
                       <td className={["table-number font-medium", gsToneClass(gameScore)].join(" ")}>
-                        {gameScore !== null ? Math.round(gameScore) : "-"}
+                        {gameScore !== null ? gameScore.toFixed(1) : "-"}
                       </td>
                       <td className="text-muted">{game.venue ?? "-"}</td>
                       <td>
