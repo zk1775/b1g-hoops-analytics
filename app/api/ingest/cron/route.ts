@@ -120,11 +120,15 @@ type DailyCronSummary = {
   errors: Array<{ date?: string; eventId?: string; message: string }>;
 };
 
-async function runScoreboardCronIngest(
-  request: NextRequest,
-  env: ReturnType<typeof requireRuntimeEnv>,
-) {
-  const db = getDb(env);
+type CronDateWindow = {
+  startIso: string;
+  endIso: string;
+  season: number;
+  includeBoxscore: boolean;
+  isoDates: string[];
+};
+
+function resolveCronDateWindow(request: NextRequest) {
   const url = new URL(request.url);
   const season = parseInteger(url.searchParams.get("season"), getCurrentSeasonYear());
   const includeBoxscore = parseBoolean(url.searchParams.get("includeBoxscore"), true);
@@ -132,13 +136,46 @@ async function runScoreboardCronIngest(
 
   const explicitStart = url.searchParams.get("start");
   const explicitEnd = url.searchParams.get("end");
-  const daysBack = Math.min(Math.max(parseInteger(url.searchParams.get("daysBack"), 1), 0), 7);
+  // Default to a 2-day lookback so a missed run still catches the prior day.
+  const daysBack = Math.min(Math.max(parseInteger(url.searchParams.get("daysBack"), 2), 0), 7);
   const daysForward = Math.min(Math.max(parseInteger(url.searchParams.get("daysForward"), 0), 0), 2);
 
   const todayTz = toIsoDateInTimeZone(new Date(), tz);
   const startIso = explicitStart ?? addDaysIso(todayTz, -daysBack);
   const endIso = explicitEnd ?? addDaysIso(todayTz, daysForward);
   const isoDates = enumerateIsoDates(startIso, endIso);
+
+  return { startIso, endIso, season, includeBoxscore, isoDates } satisfies CronDateWindow;
+}
+
+async function runBoundedTeamScheduleCronIngest(
+  request: NextRequest,
+  env: ReturnType<typeof requireRuntimeEnv>,
+) {
+  const window = resolveCronDateWindow(request);
+  const summary = await runIngest(env, {
+    mode: "all",
+    season: window.season,
+    since: window.startIso,
+    until: window.endIso,
+    includeBoxscore: window.includeBoxscore,
+  });
+
+  return {
+    strategy: "bounded" as const,
+    start: window.startIso,
+    end: window.endIso,
+    datesProcessed: window.isoDates.length,
+    ...summary,
+  };
+}
+
+async function runScoreboardCronIngest(
+  request: NextRequest,
+  env: ReturnType<typeof requireRuntimeEnv>,
+) {
+  const db = getDb(env);
+  const { season, includeBoxscore, startIso, endIso, isoDates } = resolveCronDateWindow(request);
 
   const counts = emptyCounts();
   const processedEventIds = new Set<string>();
@@ -265,7 +302,7 @@ export async function GET(request: NextRequest) {
   }
 
   const params = new URL(request.url).searchParams;
-  const strategy = params.get("strategy") ?? "scoreboard";
+  const strategy = params.get("strategy") ?? "bounded";
 
   try {
     if (strategy === "full") {
@@ -281,7 +318,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ status: "ok", source: "cron", strategy: "full", ...summary });
     }
 
-    const summary = await runScoreboardCronIngest(request, env);
+    if (strategy === "scoreboard") {
+      const summary = await runScoreboardCronIngest(request, env);
+      return NextResponse.json({ status: "ok", source: "cron", ...summary });
+    }
+
+    const summary = await runBoundedTeamScheduleCronIngest(request, env);
     return NextResponse.json({ status: "ok", source: "cron", ...summary });
   } catch (error) {
     return NextResponse.json(
