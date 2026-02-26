@@ -126,6 +126,10 @@ function computeTeamGameScore(stats: {
   return Math.max(0, raw * 1.6);
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function percentile(sorted: number[], p: number) {
   if (sorted.length === 0) return null;
   if (sorted.length === 1) return sorted[0] ?? null;
@@ -269,8 +273,111 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
     return { homeScore, awayScore };
   }
 
+  const currentSeason =
+    schedule.reduce((max, game) => Math.max(max, game.season ?? 0), 0) || null;
+
+  const scopedOpponentIds = new Set<number>();
+  for (const game of scopedSchedule) {
+    if (game.homeTeamId !== null && game.homeTeamId !== team.id) {
+      scopedOpponentIds.add(game.homeTeamId);
+    }
+    if (game.awayTeamId !== null && game.awayTeamId !== team.id) {
+      scopedOpponentIds.add(game.awayTeamId);
+    }
+  }
+
+  const seasonRecordGames =
+    currentSeason !== null && scopedOpponentIds.size > 0
+      ? await db
+          .select({
+            homeTeamId: games.homeTeamId,
+            awayTeamId: games.awayTeamId,
+            homeScore: games.homeScore,
+            awayScore: games.awayScore,
+            status: games.status,
+            homeConference: homeTeam.conference,
+            awayConference: awayTeam.conference,
+          })
+          .from(games)
+          .innerJoin(homeTeam, eq(games.homeTeamId, homeTeam.id))
+          .innerJoin(awayTeam, eq(games.awayTeamId, awayTeam.id))
+          .where(
+            sql`${games.season} = ${currentSeason} and (${games.homeTeamId} in (${sql.join(
+              [...scopedOpponentIds].map((id) => sql`${id}`),
+              sql`, `,
+            )}) or ${games.awayTeamId} in (${sql.join(
+              [...scopedOpponentIds].map((id) => sql`${id}`),
+              sql`, `,
+            )}))`,
+          )
+      : [];
+
+  const opponentRecordByTeamId = new Map<number, { wins: number; losses: number }>();
+  for (const row of seasonRecordGames) {
+    if (
+      row.homeTeamId === null ||
+      row.awayTeamId === null ||
+      row.homeScore === null ||
+      row.awayScore === null ||
+      !isFinalStatus(row.status)
+    ) {
+      continue;
+    }
+    if (
+      scope === "b1g" &&
+      !(row.homeConference === "Big Ten" && row.awayConference === "Big Ten")
+    ) {
+      continue;
+    }
+
+    const homeBucket = opponentRecordByTeamId.get(row.homeTeamId) ?? { wins: 0, losses: 0 };
+    const awayBucket = opponentRecordByTeamId.get(row.awayTeamId) ?? { wins: 0, losses: 0 };
+
+    if (row.homeScore > row.awayScore) {
+      homeBucket.wins += 1;
+      awayBucket.losses += 1;
+    } else if (row.awayScore > row.homeScore) {
+      awayBucket.wins += 1;
+      homeBucket.losses += 1;
+    }
+
+    opponentRecordByTeamId.set(row.homeTeamId, homeBucket);
+    opponentRecordByTeamId.set(row.awayTeamId, awayBucket);
+  }
+
+  const compositeGsByGameId = new Map<number, number | null>();
+  for (const game of scopedSchedule) {
+    const baseGs = gameScoreByGameTeam.get(`${game.id}:${team.id}`) ?? null;
+    if (baseGs === null) {
+      compositeGsByGameId.set(game.id, null);
+      continue;
+    }
+
+    const resolvedScores = resolveGameScores(game);
+    const isHome = game.homeTeamId === team.id;
+    const oppTeamId = isHome ? game.awayTeamId : game.homeTeamId;
+
+    let marginAdj = 0;
+    if (resolvedScores.homeScore !== null && resolvedScores.awayScore !== null) {
+      const pointsFor = isHome ? resolvedScores.homeScore : resolvedScores.awayScore;
+      const pointsAgainst = isHome ? resolvedScores.awayScore : resolvedScores.homeScore;
+      marginAdj = clamp((pointsFor - pointsAgainst) * 0.45, -18, 18);
+    }
+
+    let oppStrengthAdj = 0;
+    if (oppTeamId !== null) {
+      const oppRecord = opponentRecordByTeamId.get(oppTeamId);
+      const oppGames = (oppRecord?.wins ?? 0) + (oppRecord?.losses ?? 0);
+      const oppWinPct = oppGames > 0 ? (oppRecord?.wins ?? 0) / oppGames : 0.5;
+      oppStrengthAdj = (oppWinPct - 0.5) * 16;
+    }
+
+    const venueAdj = isHome ? 0 : 1.2;
+    compositeGsByGameId.set(game.id, Math.max(0, baseGs + marginAdj + oppStrengthAdj + venueAdj));
+  }
+
   const scopedGsValues = scopedSchedule
-    .map((game) => gameScoreByGameTeam.get(`${game.id}:${team.id}`) ?? null)
+    .map((game) => compositeGsByGameId.get(game.id) ?? null)
     .filter((value): value is number => value !== null)
     .sort((a, b) => a - b);
   const gsLowCut = percentile(scopedGsValues, 1 / 3);
@@ -342,9 +449,6 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
   const avgPossessions = possessionsSummary[0]?.avgPossessions ?? null;
 
   const futureGames = scopedSchedule.filter((game) => !isFinalStatus(game.status)).length;
-  const currentSeason =
-    schedule.reduce((max, game) => Math.max(max, game.season ?? 0), 0) || null;
-
   const scopedSeasonFinalGameIds =
     currentSeason !== null
       ? scopedSchedule
@@ -612,7 +716,7 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                     resolvedScores.homeScore,
                     resolvedScores.awayScore,
                   );
-                  const gameScore = gameScoreByGameTeam.get(`${game.id}:${team.id}`) ?? null;
+                  const gameScore = compositeGsByGameId.get(game.id) ?? null;
                   const isWin = resultText.startsWith("W ");
                   const isLoss = resultText.startsWith("L ");
 
@@ -665,6 +769,9 @@ export default async function TeamPage({ params, searchParams }: TeamPageProps) 
                 })}
               </tbody>
             </table>
+          </div>
+          <div className="border-t border-line px-3 py-2 text-[11px] text-muted sm:px-4">
+            GS blends boxscore production with scoring margin and an opponent-strength adjustment (scope-aware season win% proxy).
           </div>
         </div>
       )}
