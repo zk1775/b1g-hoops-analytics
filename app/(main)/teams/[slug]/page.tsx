@@ -10,7 +10,10 @@ export const runtime = "edge";
 
 type TeamPageProps = {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ scope?: string }>;
 };
+
+type TeamScope = "all" | "b1g";
 
 function formatDate(timestamp: number | null) {
   if (!timestamp) {
@@ -46,8 +49,44 @@ function formatResult(
   return `${pointsFor > pointsAgainst ? "W" : "L"} ${pointsFor}-${pointsAgainst}`;
 }
 
-export default async function TeamPage({ params }: TeamPageProps) {
+function parseScope(scope: string | undefined): TeamScope {
+  return scope === "b1g" ? "b1g" : "all";
+}
+
+function computePrpgProxy(row: {
+  gp: number;
+  points: number;
+  ast: number;
+  reb: number;
+  stl: number;
+  blk: number;
+  tov: number;
+  fga: number;
+  fgm: number;
+  fta: number;
+  ftm: number;
+}) {
+  if (row.gp <= 0) {
+    return 0;
+  }
+  const missedFg = Math.max(0, row.fga - row.fgm);
+  const missedFt = Math.max(0, row.fta - row.ftm);
+  const productionValue =
+    row.points +
+    row.ast * 1.25 +
+    row.reb * 0.7 +
+    row.stl * 1.6 +
+    row.blk * 1.4 -
+    row.tov * 1.2 -
+    missedFg * 0.45 -
+    missedFt * 0.3;
+  return productionValue / row.gp;
+}
+
+export default async function TeamPage({ params, searchParams }: TeamPageProps) {
   const { slug } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const scope = parseScope(resolvedSearchParams.scope);
   const env = resolveDbEnv();
 
   if (!env) {
@@ -93,6 +132,8 @@ export default async function TeamPage({ params }: TeamPageProps) {
       awayName: awayTeam.name,
       homeSlug: homeTeam.slug,
       awaySlug: awayTeam.slug,
+      homeConference: homeTeam.conference,
+      awayConference: awayTeam.conference,
     })
     .from(games)
     .innerJoin(homeTeam, eq(games.homeTeamId, homeTeam.id))
@@ -100,7 +141,14 @@ export default async function TeamPage({ params }: TeamPageProps) {
     .where(or(eq(games.homeTeamId, team.id), eq(games.awayTeamId, team.id)))
     .orderBy(desc(games.date), desc(games.id));
 
-  const scheduleGameIds = schedule.map((game) => game.id);
+  const scopedSchedule = schedule.filter((game) => {
+    if (scope !== "b1g") {
+      return true;
+    }
+    return game.homeConference === "Big Ten" && game.awayConference === "Big Ten";
+  });
+
+  const scheduleGameIds = scopedSchedule.map((game) => game.id);
   const statRows =
     scheduleGameIds.length > 0
       ? await db
@@ -141,7 +189,7 @@ export default async function TeamPage({ params }: TeamPageProps) {
   let wins = 0;
   let losses = 0;
 
-  for (const game of schedule) {
+  for (const game of scopedSchedule) {
     const resolvedScores = resolveGameScores(game);
     if (
       !isFinalStatus(game.status) ||
@@ -168,23 +216,40 @@ export default async function TeamPage({ params }: TeamPageProps) {
   const avgPointsFor = finalGamesCount > 0 ? totalPointsFor / finalGamesCount : null;
   const avgPointsAgainst = finalGamesCount > 0 ? totalPointsAgainst / finalGamesCount : null;
 
-  const possessionsSummary = await db
-    .select({
-      avgPossessions: sql<number>`avg(${teamGameStats.possessionsEst})`,
-    })
-    .from(teamGameStats)
-    .where(eq(teamGameStats.teamId, team.id));
+  const finalizedScopedGameIds = scopedSchedule
+    .filter((game) => isFinalStatus(game.status))
+    .map((game) => game.id);
+  const possessionsSummary =
+    finalizedScopedGameIds.length > 0
+      ? await db
+          .select({
+            avgPossessions: sql<number>`avg(${teamGameStats.possessionsEst})`,
+          })
+          .from(teamGameStats)
+          .where(
+            sql`${teamGameStats.teamId} = ${team.id} and ${teamGameStats.gameId} in (${sql.join(
+              finalizedScopedGameIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})`,
+          )
+      : [];
   const avgPossessions = possessionsSummary[0]?.avgPossessions ?? null;
 
-  const futureGames = schedule.filter((game) => !isFinalStatus(game.status)).length;
+  const futureGames = scopedSchedule.filter((game) => !isFinalStatus(game.status)).length;
   const currentSeason =
     schedule.reduce((max, game) => Math.max(max, game.season ?? 0), 0) || null;
 
-  const playerStatRows =
+  const scopedSeasonFinalGameIds =
     currentSeason !== null
+      ? scopedSchedule
+          .filter((game) => game.season === currentSeason && isFinalStatus(game.status))
+          .map((game) => game.id)
+      : [];
+
+  const playerStatRows =
+    scopedSeasonFinalGameIds.length > 0
       ? await db
           .select({
-            gameId: playerGameStats.gameId,
             didNotPlay: playerGameStats.didNotPlay,
             starter: playerGameStats.starter,
             minutesDecimal: playerGameStats.minutesDecimal,
@@ -207,10 +272,12 @@ export default async function TeamPage({ params }: TeamPageProps) {
             position: players.position,
           })
           .from(playerGameStats)
-          .innerJoin(games, eq(playerGameStats.gameId, games.id))
           .leftJoin(players, eq(playerGameStats.playerId, players.id))
           .where(
-            sql`${playerGameStats.teamId} = ${team.id} and ${games.season} = ${currentSeason} and lower(coalesce(${games.status}, '')) like 'final%'`,
+            sql`${playerGameStats.teamId} = ${team.id} and ${playerGameStats.gameId} in (${sql.join(
+              scopedSeasonFinalGameIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})`,
           )
       : [];
 
@@ -294,11 +361,14 @@ export default async function TeamPage({ params }: TeamPageProps) {
   const playerSeasonStats = [...playerAgg.values()]
     .filter((row) => row.gp > 0)
     .sort((a, b) => {
+      const aPrpg = computePrpgProxy(a);
+      const bPrpg = computePrpgProxy(b);
+      if (aPrpg !== bPrpg) {
+        return bPrpg - aPrpg;
+      }
       const aPpg = a.gp > 0 ? a.points / a.gp : 0;
       const bPpg = b.gp > 0 ? b.points / b.gp : 0;
-      if (aPpg !== bPpg) {
-        return bPpg - aPpg;
-      }
+      if (aPpg !== bPpg) return bPpg - aPpg;
       return b.minutes - a.minutes;
     });
 
@@ -361,7 +431,38 @@ export default async function TeamPage({ params }: TeamPageProps) {
         </div>
       </div>
 
-      {schedule.length === 0 ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="stat-label">Scope</span>
+        <Link
+          href={`/teams/${team.slug}?scope=all`}
+          prefetch={false}
+          className={[
+            "rounded-md border px-3 py-1.5 text-sm font-semibold tracking-wide",
+            scope === "all"
+              ? "border-accent/70 bg-accent/10 text-accent"
+              : "border-line bg-panel/70 text-foreground/90 hover:border-accent/40 hover:text-accent",
+          ].join(" ")}
+        >
+          All Games
+        </Link>
+        <Link
+          href={`/teams/${team.slug}?scope=b1g`}
+          prefetch={false}
+          className={[
+            "rounded-md border px-3 py-1.5 text-sm font-semibold tracking-wide",
+            scope === "b1g"
+              ? "border-accent/70 bg-accent/10 text-accent"
+              : "border-line bg-panel/70 text-foreground/90 hover:border-accent/40 hover:text-accent",
+          ].join(" ")}
+        >
+          B1G Only
+        </Link>
+        <span className="rounded-md border border-line bg-panel px-3 py-1.5 text-sm text-muted">
+          Current: {scope === "b1g" ? "B1G games only" : "All games"}
+        </span>
+      </div>
+
+      {scopedSchedule.length === 0 ? (
         <div className="data-panel rounded-xl p-4 text-sm text-muted">
           No games found yet. Run ingest via{" "}
           <code className="rounded bg-panel px-1 py-0.5 text-foreground/90">/api/ingest</code>.
@@ -371,9 +472,13 @@ export default async function TeamPage({ params }: TeamPageProps) {
           <div className="flex items-center justify-between border-b border-line px-3 py-2.5 sm:px-4">
             <div>
               <p className="stat-label">Schedule & Results</p>
-              <p className="text-sm text-foreground/90">All games for this team (B1G + OOC)</p>
+              <p className="text-sm text-foreground/90">
+                {scope === "b1g"
+                  ? "Big Ten conference games only"
+                  : "All games for this team (B1G + OOC)"}
+              </p>
             </div>
-            <span className="stat-value text-xs text-muted">{schedule.length} games</span>
+            <span className="stat-value text-xs text-muted">{scopedSchedule.length} games</span>
           </div>
 
           <div className="table-scroll overflow-x-auto">
@@ -389,7 +494,7 @@ export default async function TeamPage({ params }: TeamPageProps) {
                 </tr>
               </thead>
               <tbody>
-                {schedule.map((game) => {
+                {scopedSchedule.map((game) => {
                   const isHome = game.homeTeamId === team.id;
                   const opponentName = isHome ? game.awayName : game.homeName;
                   const opponentSlug = isHome ? game.awaySlug : game.homeSlug;
@@ -458,7 +563,8 @@ export default async function TeamPage({ params }: TeamPageProps) {
           <div>
             <p className="stat-label">Player Stats</p>
             <p className="text-sm text-foreground/90">
-              {currentSeason ? `Season ${currentSeason}` : "Season totals"} player production and shooting splits
+              {currentSeason ? `Season ${currentSeason}` : "Season totals"}{" "}
+              {scope === "b1g" ? "B1G-only" : "all-games"} player production, shooting splits, and PRPG*
             </p>
           </div>
           <span className="stat-value text-xs text-muted">{playerSeasonStats.length} players</span>
@@ -477,6 +583,7 @@ export default async function TeamPage({ params }: TeamPageProps) {
                   <th>GP</th>
                   <th>GS</th>
                   <th>MPG</th>
+                  <th>PRPG*</th>
                   <th>PPG</th>
                   <th>RPG</th>
                   <th>APG</th>
@@ -507,6 +614,7 @@ export default async function TeamPage({ params }: TeamPageProps) {
                     <td className="table-number">{row.gp}</td>
                     <td className="table-number">{row.gs}</td>
                     <td className="table-number">{(row.minutes / row.gp).toFixed(1)}</td>
+                    <td className="table-number">{computePrpgProxy(row).toFixed(1)}</td>
                     <td className="table-number">{(row.points / row.gp).toFixed(1)}</td>
                     <td className="table-number">{(row.reb / row.gp).toFixed(1)}</td>
                     <td className="table-number">{(row.ast / row.gp).toFixed(1)}</td>
@@ -525,6 +633,9 @@ export default async function TeamPage({ params }: TeamPageProps) {
             </table>
           </div>
         )}
+        <div className="border-t border-line px-3 py-2 text-[11px] text-muted sm:px-4">
+          PRPG* is a boxscore-derived per-game value proxy (scoring + playmaking + rebounds + defense, with turnover/missed-shot penalties).
+        </div>
       </div>
     </section>
   );
