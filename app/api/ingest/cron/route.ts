@@ -17,6 +17,8 @@ import { requireRuntimeEnv, resolveAdminToken } from "@/lib/runtime/env";
 export const runtime = "edge";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const PUBLIC_CRON_MIN_INTERVAL_MS = 20 * 60 * 1000;
+let lastPublicCronRunMs = 0;
 
 function parseBoolean(value: string | null, fallback = false) {
   if (!value) {
@@ -182,6 +184,39 @@ async function runBoundedTeamScheduleCronIngest(
   };
 }
 
+async function runPublicBoundedCronIngest(env: ReturnType<typeof requireRuntimeEnv>) {
+  const now = Date.now();
+  if (now - lastPublicCronRunMs < PUBLIC_CRON_MIN_INTERVAL_MS) {
+    return {
+      strategy: "bounded-public" as const,
+      skipped: true,
+      reason: "recently-executed",
+      minIntervalMs: PUBLIC_CRON_MIN_INTERVAL_MS,
+    };
+  }
+  lastPublicCronRunMs = now;
+
+  const timezone = "America/New_York";
+  const todayIso = toIsoDateInTimeZone(new Date(), timezone);
+  const startIso = addDaysIso(todayIso, -2);
+  const endIso = todayIso;
+
+  const summary = await runIngest(env, {
+    mode: "all",
+    season: getCurrentSeasonYear(),
+    since: startIso,
+    until: endIso,
+    includeBoxscore: true,
+  });
+
+  return {
+    strategy: "bounded-public" as const,
+    skipped: false,
+    window: { start: startIso, end: endIso, timezone },
+    ...summary,
+  };
+}
+
 async function runScoreboardCronIngest(
   request: NextRequest,
   env: ReturnType<typeof requireRuntimeEnv>,
@@ -309,14 +344,18 @@ export async function GET(request: NextRequest) {
   }
 
   const adminToken = resolveAdminToken(env);
-  if (!adminToken || extractToken(request) !== adminToken) {
-    return NextResponse.json({ status: "error", message: "Unauthorized" }, { status: 401 });
-  }
+  const providedToken = extractToken(request);
+  const isPrivilegedRequest = Boolean(adminToken && providedToken === adminToken);
 
   const params = new URL(request.url).searchParams;
   const strategy = params.get("strategy") ?? "bounded";
 
   try {
+    if (!isPrivilegedRequest) {
+      const summary = await runPublicBoundedCronIngest(env);
+      return NextResponse.json({ status: "ok", source: "cron", ...summary });
+    }
+
     if (strategy === "full") {
       const season = params.get("season");
       const parsedSeason = season ? Number(season) : undefined;
