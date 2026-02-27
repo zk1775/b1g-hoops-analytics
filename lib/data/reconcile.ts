@@ -115,9 +115,10 @@ async function getCandidateGames(
   const whereParts = [
     "g.season = ?",
     "(ht.conference = 'Big Ten' OR at.conference = 'Big Ten')",
-    "lower(coalesce(g.status, '')) like 'final%'",
+    "(lower(coalesce(g.status, '')) like 'final%' OR (g.date is not null and g.date <= ?))",
   ];
-  const binds: Array<string | number> = [params.season];
+  const nowEpoch = Math.floor(Date.now() / 1000);
+  const binds: Array<string | number> = [params.season, nowEpoch];
 
   if (params.team) {
     whereParts.push("(ht.slug = ? OR at.slug = ?)");

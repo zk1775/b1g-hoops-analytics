@@ -175,11 +175,20 @@ async function runBoundedTeamScheduleCronIngest(
     includeBoxscore: window.includeBoxscore,
   });
 
+  const reconcile = await runReconcile(env, {
+    season: window.season,
+    since: window.startIso,
+    until: window.endIso,
+    includePlayerStats: window.includeBoxscore,
+    limit: 400,
+  });
+
   return {
     strategy: "bounded" as const,
     start: window.startIso,
     end: window.endIso,
     datesProcessed: window.isoDates.length,
+    reconcile,
     ...summary,
   };
 }
@@ -209,10 +218,19 @@ async function runPublicBoundedCronIngest(env: ReturnType<typeof requireRuntimeE
     includeBoxscore: true,
   });
 
+  const reconcile = await runReconcile(env, {
+    season: getCurrentSeasonYear(),
+    since: startIso,
+    until: endIso,
+    includePlayerStats: true,
+    limit: 300,
+  });
+
   return {
     strategy: "bounded-public" as const,
     skipped: false,
     window: { start: startIso, end: endIso, timezone },
+    reconcile,
     ...summary,
   };
 }
