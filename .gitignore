@@ -5,3 +5,5 @@ node_modules/
 seed-b1g.sql
 .tmp/
 .DS_Store
+
+.vercel/
